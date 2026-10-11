@@ -76,6 +76,12 @@ class JobsPane:
 
     tool_id = TOOL_ID
     label = "Jobs"
+    #: A WRAPPER, not a tool: `quiar_jobs` names nothing in the registry. So the hub's
+    #: composition claim is about the REGISTERED tool stacked here — see `_composition`.
+    #: `job_document_view` is not in it because that module is a LIBRARY (`job_document`
+    #: left the registry with the duplicate-tab fix): it draws a `job` document through
+    #: the viewscope and declares no write of its own, so it has no door to be dark from.
+    composes: tuple[str, ...] = ("job_manager",)
 
     def build_panel_payload(
         self, *, authority_db_file: Path | None, sandbox_id: str, document_id: str,

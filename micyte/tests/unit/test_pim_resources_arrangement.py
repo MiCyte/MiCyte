@@ -55,8 +55,17 @@ def _pane(graph, types=None):
 
 
 def _panes(pane):
-    """The composite's panes, in the order a client reads them down the column."""
-    return [p["panel_payload"] for p in pane["panel_payload"]["panes"]]
+    """Every pane of the Arrangement composite, with the forms unfolded: since 2026-10-07 the
+    three acts are tabs of ONE pane (one act at a time), so a reader of the forms looks inside
+    the tabbed pane too. The table is still the composite's first pane."""
+    out = []
+    for p in pane["panel_payload"]["panes"]:
+        payload = p["panel_payload"]
+        if payload.get("container") == "tabbed":
+            out.extend(t["panel_payload"] for t in payload.get("tabs", []))
+        else:
+            out.append(payload)
+    return out
 
 
 def _table(pane):

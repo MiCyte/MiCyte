@@ -38,10 +38,12 @@ env/
 **/*.key
 **/secrets/**
 **/state/**
-# Operational + PII state: aws-csm mailbox profiles carry real board-member
-# names/emails. The canonical store is the LIVE tree
-# (/srv/webapps/mycite/<grantee>/private/.../aws-csm); deployed/ is a DR
-# snapshot and must never be versioned (PII + operational drift).
+# Operational + PII state: aws-csm mailbox profiles carry real names and email
+# addresses. The canonical store is the instance's own LIVE private tree, never a
+# snapshot here; `deployed/` is a disaster-recovery copy and must never be
+# versioned (PII + operational drift). The path of that live tree is a deployment's
+# own business and is not spelled here — it was until 2026-10-04, in the one file
+# the public cut carries verbatim with no filtering.
 deployed/*/private/utilities/tools/aws-csm/
 # Contact-roster leaflets (per-entity YAML under site-core/contacts) hold real
 # PII — names/emails/phones. The canonical store is the LIVE webapps tree; these

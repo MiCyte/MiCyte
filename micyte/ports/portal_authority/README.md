@@ -1,6 +1,5 @@
 # Portal Authority Port
 
-Authority: [../../../../docs/plans/master_plan_mos.md](../../../../docs/plans/master_plan_mos.md)
 
 `micyte/ports/portal_authority/` owns the bounded portal-grants and tool-exposure
 read seam for the MOS SQL core cutover.

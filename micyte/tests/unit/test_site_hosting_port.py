@@ -38,6 +38,7 @@ from micyte.ports.site_hosting import (
     OPERATION_ARTICLE_SEND,
     OPERATION_ASSET_SWAP,
     OPERATION_ASSET_UPLOAD,
+    OPERATION_CONTACT_SET_SUBSCRIPTION,
     OPERATION_CONTENT_REPLACE,
     OPERATION_PAGE_LIST,
     OPERATION_PROFILE_EDIT,
@@ -74,6 +75,7 @@ ALL_OPERATIONS = (
     OPERATION_ASSET_UPLOAD, OPERATION_ARTICLE_PUBLISH, OPERATION_ARTICLE_RETIRE,
     OPERATION_ARTICLE_SEND,
     OPERATION_ANALYTICS_READ, OPERATION_PROFILE_EDIT, OPERATION_PROJECT_EXPORT,
+    OPERATION_CONTACT_SET_SUBSCRIPTION,
 )
 
 
@@ -92,7 +94,10 @@ class TheGrainIsOnePermissionPerRefusableAct(unittest.TestCase):
         """
         # Eight since 2026-09-10: `profile.edit`, which argued for itself the same way —
         # it rewrites a source of record several pages draw on and can hide a photograph.
-        self.assertEqual(len(set(ALL_OPERATIONS)), 10)
+        # Eleven since 2026-10-06: `contact.set_subscription` — it decides who receives
+        # mail, which is a decision about a PERSON and not about a page; an operator
+        # granting a client the right to mail a list has not granted the right to edit it.
+        self.assertEqual(len(set(ALL_OPERATIONS)), 11)
 
     def test_the_register_carries_exactly_these(self) -> None:
         self.assertEqual(set(port_type("site_hosting").operations), set(ALL_OPERATIONS))
@@ -257,6 +262,7 @@ class TheProtocolIsRuntimeCheckable(unittest.TestCase):
             def publish_article(self, *, site, draft): return PublishedArticle(slug="s")
             def retire_article(self, *, site, slug): return {}
             def read_analytics(self, *, site): return ()
+            def set_subscription(self, *, site="", email, subscribed): return {}
 
         self.assertIsInstance(Adapter(), SiteHostingPort)
 

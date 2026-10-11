@@ -465,6 +465,26 @@ class ToolPackage:
     #: "what this shows you" and "what this connects for you" are different questions and
     #: a package answering only the second installs no tools at all.
     port_fills: tuple[PortFill, ...] = ()
+    #: Does the PUBLIC marketplace list this package at all?
+    #:
+    #: Orthogonal to :attr:`is_listed`, which asks whether the AUTHORITY vouches for a
+    #: package an instance holds. This asks whether the package may be put on
+    #: micyte.com, and it is the publisher's half of the same boundary the repo split
+    #: draws: some packages are an operator's own application over the clients they host,
+    #: and advertising one on the public registrar's site is advertising a capability to
+    #: precisely the people it refuses.
+    #:
+    #: WHY IT IS A FIELD (2026-10-04, TASK-2026-10-02-002 P4). The `grantor` package
+    #: carried the literal "FND only." in its own prose and the exporter had no notion
+    #: of it, so its card was GENERATED onto the public resources page — the operator's
+    #: hosting books, their price list and their client census, named on the registrar's
+    #: own site. Prose a human reads is not a rule a publisher can keep: the exporter
+    #: drops what this says to drop.
+    #:
+    #: Defaults TRUE, because the ordinary case for a package in this catalogue is that
+    #: it is micyte's and publishable, and a flag whose safe value is the unusual one is
+    #: a flag people forget in the direction that hurts.
+    publishable: bool = True
 
     def __post_init__(self) -> None:
         for name in ("package_id", "version", "label"):

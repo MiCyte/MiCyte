@@ -56,6 +56,10 @@ SYMBOLS: dict[str, str] = {
     # icon is two things that look alike in a tree, which is what this table prevents.
     "enchir": "content_engine",
     "oveure": "edit",  # the knowledge shelf — a pencil, the writing end
+    # PIM — the client's own account app: a business card, who they are to us. The package
+    # said `folder` until 2026-10-07, a stem this pool never held, so the gallery drew the
+    # generic box for it (and for Grantor, whose package icon it never asked for).
+    "pim": "mycite.address_card",
     "quiar_overview": "tools",
     "project_manager": "tools",
     "contacts_manager": "profile",

@@ -130,13 +130,21 @@ def channel_ids() -> tuple[str, ...]:
 
 from . import agnet as _agnet  # noqa: E402,F401  (self-registration)
 from . import convention as _convention  # noqa: E402,F401  (self-registration)
-from . import grantor as _grantor  # noqa: E402,F401  (self-registration)
 
-# ONE closed channel is instantiated: `grantor` (2026-08-21), FND's hosting
-# relationship served as a channel — closed because it is served per ALIAS, never
-# to the world. `county_line_records` was closed too (hosted by FND on
-# behalf of an entity with no instance of its own) and was retired 2026-08-04: the
-# instance's posture is one open channel until a counterparty exists to engage a
-# closed one. `ACCESS_CLASSES` still carries "closed" and `register` still accepts
-# it — the taxonomy is emptied of a member, not narrowed. The transport stays
-# proven by `fnd_app/tests/_channel_fixtures.py`, which registers its own.
+# NO CLOSED CHANNEL IS SHIPPED HERE, since 2026-10-04 (TASK-2026-10-02-002 P4).
+#
+# `grantor` was (2026-08-21): FND's hosting relationship served as a channel — closed
+# because it is served per ALIAS, never to the world. Its own docstring calls it "the
+# closed channel FND serves its clients through", which is the sentence that moved it:
+# this package is published, and a published package carrying one host's client-facing
+# channel is the mixing the repo split exists to prevent. It now lives in
+# `fnd_app/instances/_shared/grantor/channel.py` and registers into THIS registry from
+# there at the host's import time, so the transport, the refusals and the access class
+# are unchanged — only where the member is declared.
+#
+# `county_line_records` was closed too (hosted by FND on behalf of an entity with no
+# instance of its own) and was retired 2026-08-04: the instance's posture is one open
+# channel until a counterparty exists to engage a closed one. `ACCESS_CLASSES` still
+# carries "closed" and `register` still accepts it — the taxonomy is emptied of a member,
+# not narrowed. The transport stays proven by `fnd_app/tests/_channel_fixtures.py`,
+# which registers its own.

@@ -1,6 +1,6 @@
 # AWS-CSM Selected Sender Write Port
 
-Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
+Authority: [../../../docs/wiki/separation_and_responsibility.md](../../../docs/wiki/separation_and_responsibility.md)
 
 `micyte/ports/aws_narrow_write/` defines one bounded internal write seam used by the unified `AWS-CSM` service tool.
 

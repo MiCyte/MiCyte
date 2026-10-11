@@ -1812,7 +1812,6 @@ def build_shell_composition_payload(
 
 
 __all__ = [
-    "AGRO_ERP_LEGACY_MSN_ID",
     "AGRO_ERP_TOOL_ENTRYPOINT_ID",
     "AGRO_ERP_TOOL_ROUTE",
     "AGRO_ERP_TOOL_SURFACE_ID",

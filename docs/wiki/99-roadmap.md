@@ -12,8 +12,7 @@ long horizon.
 
 Every `path:line` citation below points at the **current** state of the tree
 (verified on disk). Sibling wiki links (`6x`, `7x`, `8x`, `9x` pages) are the
-design specs each track depends on; some are forward references authored by
-other units in this batch.
+design specs each track depends on.
 
 ---
 
@@ -46,13 +45,13 @@ design.
 
 Delta shorthand used throughout:
 
-| ID | Delta | Severity (now) | Landing in this batch? |
+| ID | Delta | Severity (now) | Status (2026-10-11) |
 |----|-------|----------------|------------------------|
-| D1 | core→adapter inversion + duplicate engine + missing boundary test | HIGH | **partial** (see Track 0) |
+| D1 | core→adapter inversion + duplicate engine + missing boundary test | HIGH | **done** (the first batch, below) |
 | D2 | materialization read/write split (two codecs) | HIGH | spec only |
 | D3 | no hyphae-flag mechanism; MSS-vs-SAMRAS terminology drift | MED | spec only |
 | D4 | no Utilities-manage / Control-Panel-toggle lens UX | MED | spec only |
-| D5 | network transport BUILT (2026-08-02); discovery + remote reads missing | MED | partly built |
+| D5 | network transport BUILT (2026-08-02); declarations and the registry still (2026-10); discovery + remote reads missing | MED | partly built |
 | D6 | desktop app + local DB | long horizon | spec only |
 
 ---
@@ -374,37 +373,33 @@ Key edges:
 
 ---
 
-## Suggested ordering
+## Where the ordering stands (2026-10-11)
 
-A single numbered sequence with rationale. Steps 1–3 are the only ones that
-should touch code in the near term.
+The original sequence, with what has happened to each step. The network steps are kept
+current in [`90-network-contract-architecture.md`](90-network-contract-architecture.md)
+(*Migration path*) and the accounts and hosting ledger in
+[`96-accounts-and-hosting.md`](96-accounts-and-hosting.md); where this page and those
+disagree, they win.
 
-1. **Close D1 (core→adapter inversion + dedupe + boundary test).** *Why first:*
-   cheapest high-leverage fix; makes "simplified core" real and prevents
-   regressions via the new architecture test. **(Landing in this batch.)**
-2. **Define + implement the hyphae-flag mechanism (D3, mechanism only).** *Why
-   next:* tools are meaningless without something to bind to; this is the
-   smallest unit of product value.
-3. **Unify the read path on WORKBOOK-YAML (D2, read path).** *Why:* makes tool
-   authoring symmetric (read shape == write shape) before you write many tools.
-4. **Add the Utilities/Control-Panel lens UX (D4).** *Why:* lets operators see
-   the payoff of recognized data without code changes — turns Track 1 into a
-   demo.
-5. **Build demo sandboxes + the first tools/lenses (Track 1 body).** *Why:* the
-   actual deliverable; everything above existed to make this clean.
-6. **Reconcile MSS/SAMRAS terminology + full read/write YAML unification
-   (Track 2).** *Why:* converge the model once real tools have exercised it; do
-   it after you know what tools actually need.
-7. **Network layer, in stub order (Track 3): crypto → contracts → contact card
-   + default FND subordinate → msn_registry → template-driven fill → reference
-   exchange.** *Why deferred:* LOW value until single-node tooling is proven;
-   HIGH cost and surface area.
-8. **Desktop app + local DB (Track 4).** *Why last:* packaging on top of a
-   stable, form-factor-agnostic core.
+1. **D1 — core→adapter inversion, dedupe, boundary test.** Done (the first batch, below).
+2. **D3 — the hyphae-flag mechanism.** See Track 0's *What to do*; mechanism only.
+3. **D2 — one read path on WORKBOOK-YAML.** See Track 2.
+4. **D4 — the Utilities / Control-Panel lens UX.** See Track 1.
+5. **Demo sandboxes and the first tools and lenses.** Delivered as applications rather
+   than demos: Brevat, Quiar, Oveure, Enchir and PIM ship as packages
+   ([`93-the-marketplace.md`](93-the-marketplace.md)).
+6. **MSS/SAMRAS terminology and full YAML unification (Track 2).** Open.
+7. **Network layer (Track 3).** Crypto, contracts, the contact card with its signature
+   and endpoint, authenticated transport and the outbound client are built; instances
+   keep their registry cards by **declaration** (2026-10-09); the registry is published
+   as a still. Next is `msn_registry` (discovery without a contract), then magnet
+   resolution, then person-level accounts.
+8. **Desktop app + local DB (Track 4).** Designed
+   ([`95-desktop-app-local-db.md`](95-desktop-app-local-db.md)), not built.
 
 ---
 
-## What this batch delivered
+## What the first batch delivered (2026-07)
 
 This batch delivered the **wiki** (this roadmap plus the spec pages it links)
 and **three code fixes** that close Track 0's D1:
@@ -422,9 +417,7 @@ and **three code fixes** that close Track 0's D1:
 3. Added `test_core_datum_ops_boundaries.py` to
    [`fnd_app/tests/architecture/`](../../fnd_app/tests/architecture).
 
-**Everything else on this roadmap is design-spec → future work.** Tracks 1–4
-are sequenced and specified here and in the linked pages, but were not
-implemented in this batch. Use this page to decide what to build next.
+What came after it is recorded step by step above, and in the pages each step names.
 
 ---
 

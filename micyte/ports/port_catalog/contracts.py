@@ -158,6 +158,7 @@ def _bindable() -> tuple[PortType, ...]:
         OPERATION_ARTICLE_SEND,
         OPERATION_ASSET_SWAP,
         OPERATION_ASSET_UPLOAD,
+        OPERATION_CONTACT_SET_SUBSCRIPTION,
         OPERATION_CONTENT_REPLACE,
         OPERATION_PAGE_LIST,
         OPERATION_PROFILE_EDIT,
@@ -262,6 +263,8 @@ def _bindable() -> tuple[PortType, ...]:
                 # derived from it (2026-09-11): the books are the source, the leaflet
                 # a copy; lands files and rewrites a profile in one act.
                 OPERATION_PROJECT_EXPORT,
+                # One reader on or off the site's list, by hand (2026-10-06).
+                OPERATION_CONTACT_SET_SUBSCRIPTION,
             ),
         ),
         PortType(

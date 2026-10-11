@@ -59,14 +59,30 @@ from typing import Any
 KEYPASS_FAMILIES: tuple[str, ...] = (
     "service_key",
     "aws_verification",
-    "payment_instrument",
-    # What FND charges an alias WITH — the processor's vault reference for the card the
-    # client put on file at signup (TASK-2026-09-16-001). A fourth family rather than a
-    # reading of the third: `payment_instrument` below is the client's own MERCHANT
-    # credential, the account their site takes money INTO, and the two point opposite
-    # ways. One family for both would let "this alias can be charged" mean "this alias
-    # can take payment", which was in fact what the third family's purpose string said
-    # until 2026-09-16.
+    # TWO FAMILIES THIS MODULE NO LONGER READS, and still names (2026-10-04,
+    # TASK-2026-10-02-002 P4). Their READERS moved to
+    # `fnd_app/instances/_shared/grantor/instruments.py`, because both read a tree only
+    # the operator's own host has — the ENV-configured grantee secrets tree, and the
+    # folder the grantor keeps vault references in. A published package that knew how to
+    # walk one deployment's private client secrets is the mixing the repo split exists to
+    # prevent, and `micyte/__init__.py` already said so: "This package must import
+    # nothing of FND's grantee services." It did not import them; it read their files.
+    #
+    # The NAMES stay here because the family taxonomy is the contract — a host
+    # contributing a reader must name a family this list knows, so the wallet's columns
+    # and `instruments_by_family`'s every-family-present rule hold for a host reader
+    # exactly as for a built-in one. The taxonomy is where it was; only the walkers moved.
+    #
+    # `merchant_account` is the client's own MERCHANT credential, the account their
+    # site takes money INTO. `charging_instrument` is the processor's vault reference for
+    # the card the client put on file at signup — what FND charges them WITH. Two
+    # families and not one reading of one, because they point opposite ways: one family
+    # for both would let "this alias can be charged" mean "this alias can take payment",
+    # which is in fact what the third family's purpose string said until 2026-09-16.
+    # RENAMED from `payment_instrument` on 2026-10-09 (side-2026-10-08-0005): that is the
+    # name of the PORT FND charges through, and a fill now makes the port's name
+    # load-bearing — one name, one denotation.
+    "merchant_account",
     "charging_instrument",
 )
 
@@ -77,10 +93,43 @@ STATE_ERROR = "error"
 
 _KEY_DIRNAME = ("utilities", "tools", "fnd_service", "keys")
 _AWS_DIRNAME = ("utilities", "tools", "aws-csm")
-#: Where `fnd_app...grantor_instruments` keeps the vault reference FND charges an alias
-#: with. Spelled here as well because this module reads it and imports nothing that
-#: could tell it; `test_key_pass_wallet` holds the two spellings together.
-_CHARGING_DIRNAME = ("utilities", "tools", "grantor", "instruments")
+
+#: Extra instrument readers a HOST contributes, by family.
+#:
+#: WHY THIS SEAM EXISTS (2026-10-04). Two of the four families were read HERE, out of
+#: trees only the operator's own host has: the ENV-configured grantee secrets tree
+#: (`MYCITE_GRANTEE_ROOT`) and the folder the grantor keeps vault references in. This
+#: module's own docstring is careful that "this module does not read the environment, so
+#: it cannot quietly reach a tree its caller did not name" — and it knew the LAYOUT of
+#: both trees, which is the same knowledge one step removed.
+#:
+#: So a reader is a callable the host registers, taking the paths the caller named and
+#: returning :class:`HeldInstrument` values. The RULE this module owns is unchanged and
+#: applies to a host reader exactly as to a built-in one: a reader returns enough to
+#: RECOGNISE an instrument and never enough to USE one.
+_HOST_READERS: dict[str, Any] = {}
+
+
+def register_instrument_reader(family: str, reader: Any) -> None:
+    """A host contributes a reader for one instrument family.
+
+    ``family`` must be one this module's taxonomy names. A reader for a family nobody
+    declared would return instruments the wallet has no column for and
+    `instruments_by_family`'s every-family-present rule could not account for — so it is
+    refused by name rather than grouped under a heading that does not exist.
+
+    ``reader(private_dir, grantee_root)`` returns an iterable of `HeldInstrument`. Both
+    paths are passed because a reader may need either and neither is discovered here.
+    """
+    token = str(family or "").strip()
+    if token not in KEYPASS_FAMILIES:
+        raise ValueError(
+            f"{token!r} is not an instrument family this taxonomy names "
+            f"({', '.join(KEYPASS_FAMILIES)}). A reader for an undeclared family would "
+            "return instruments the wallet has no column for.")
+    if not callable(reader):
+        raise TypeError(f"the {token!r} instrument reader must be callable")
+    _HOST_READERS[token] = reader
 
 
 @dataclass(frozen=True)
@@ -204,107 +253,6 @@ def _aws_verifications(private_dir: Path) -> list[HeldInstrument]:
     return out
 
 
-def _payment_instruments(grantee_root: Path | None) -> list[HeldInstrument]:
-    """Vendor, environment, and WHETHER a secret is present. Never a fingerprint of one.
-
-    A service key gets last-four because the operator hands it over and has to tell two
-    apart by eye. A payment secret is never told apart by eye, so there is nothing four
-    characters of it would buy that "a secret is on file" does not.
-    """
-    if grantee_root is None:
-        return []
-    folder = Path(grantee_root) / "secrets"
-    if not folder.is_dir():
-        return []
-    out: list[HeldInstrument] = []
-    for path in sorted(folder.glob("grantee.*.secrets.yaml")):
-        alias = path.name.split(".")[1] if path.name.count(".") >= 2 else path.stem
-        try:
-            import yaml
-
-            loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            out.append(HeldInstrument(
-                family="payment_instrument", alias=alias,
-                purpose="The PayPal merchant account this alias's own site takes payment through.",
-                state=STATE_ERROR, note=f"Unreadable ({type(exc).__name__}).",
-            ))
-            continue
-        loaded = loaded if isinstance(loaded, dict) else {}
-        paypal = loaded.get("paypal")
-        paypal = paypal if isinstance(paypal, dict) else {}
-        if not paypal:
-            continue
-        has_secret = bool(_text(paypal.get("client_secret")))
-        environment = _text(paypal.get("environment")) or _text(paypal.get("mode"))
-        out.append(HeldInstrument(
-            family="payment_instrument",
-            alias=alias,
-            # CORRECTED 2026-09-16. This read "What the Grantor Application charges
-            # against" from the day the wallet was built, and the file it reads is the
-            # client's PayPal MERCHANT secret -- the account their own site takes
-            # donations into. Grantor charges nobody through it. The instrument grantor
-            # charges WITH is the `charging_instrument` family below.
-            purpose="The PayPal merchant account this alias's own site takes payment through.",
-            state=STATE_PRESENT if has_secret else STATE_ABSENT,
-            fingerprint=f"PayPal · {environment}" if environment else "PayPal",
-            # STATE, never a diagnosis. `cvcc` carries an environment and a webhook
-            # URL with no credentials, and that is DELIBERATE -- its donate page was
-            # built as the on-site REST experience and left un-wired at the operator's
-            # instruction. A wallet that called this a fault would be reporting a
-            # working configuration as broken.
-            note="Credentials on file; this alias can be charged." if has_secret
-            else "No credentials on file; this alias cannot be charged yet.",
-        ))
-    return out
-
-
-def _charging_instruments(private_dir: Path) -> list[HeldInstrument]:
-    """The vault reference FND charges an alias with: WHICH processor, WHICH environment,
-    and whether a reference is on file. Never the reference.
-
-    A vault reference is opaque and the client never sees it, so — like the merchant
-    secret above and unlike a service key — nothing four characters of it would buy. The
-    recogniser a person knows the card BY (brand, last four, expiry) is not held here
-    at all: it is the RECORD, in the grantee's datum document, read by the surfaces that
-    draw it. This file holds only what a charge needs, and this reader reports only that
-    it is there.
-    """
-    folder = private_dir.joinpath(*_CHARGING_DIRNAME)
-    if not folder.is_dir():
-        # NOT an error: no client has put a card on file yet, and on the live host that
-        # is every client. "none on file" must not look like a broken page.
-        return []
-    out: list[HeldInstrument] = []
-    for path in sorted(folder.glob("*.json")):
-        alias = path.stem
-        record, error = _load(path)
-        if record is None:
-            out.append(HeldInstrument(
-                family="charging_instrument", alias=alias,
-                purpose="What FND charges this alias with.",
-                state=STATE_ERROR, note=f"The instrument file could not be read ({error}).",
-            ))
-            continue
-        reference = _text(record.get("vault_ref"))
-        processor = _text(record.get("processor"))
-        environment = _text(record.get("environment"))
-        out.append(HeldInstrument(
-            family="charging_instrument",
-            alias=_text(record.get("grantee_msn_id")) or alias,
-            purpose="What FND charges this alias with.",
-            state=STATE_PRESENT if reference else STATE_ABSENT,
-            # The processor and the environment, which are the two facts an operator
-            # needs to tell a sandbox instrument from a live one. Not a character of
-            # the reference.
-            fingerprint=" \u00b7 ".join(part for part in (processor, environment) if part),
-            arrived_at=_text(record.get("added_at")),
-            note="A vault reference is on file; this alias can be charged." if reference
-            else "No vault reference on file; this alias cannot be charged.",
-        ))
-    return out
-
-
 def held_instruments(
     private_dir: Path | str | None,
     *,
@@ -330,9 +278,23 @@ def held_instruments(
     found: list[HeldInstrument] = []
     found.extend(_service_keys(root))
     found.extend(_aws_verifications(root))
-    found.extend(_payment_instruments(
-        Path(grantee_root) if grantee_root is not None else None))
-    found.extend(_charging_instruments(root))
+    # THE HOST'S OWN FAMILIES. Empty in a public build, by construction — nothing
+    # registers a reader there, and the wallet then draws the two families this module
+    # reads with the other two present and empty, which is exactly what
+    # `instruments_by_family` promises.
+    for family in KEYPASS_FAMILIES:
+        reader = _HOST_READERS.get(family)
+        if reader is None:
+            continue
+        try:
+            found.extend(reader(
+                root, Path(grantee_root) if grantee_root is not None else None))
+        except Exception:  # pragma: no cover — a host reader must not blank the wallet
+            # SILENT here and not swallowed everywhere: each reader already reports an
+            # unreadable FILE as a `STATE_ERROR` instrument, which is the honest answer.
+            # This catches a reader that fails wholesale, and the family then renders
+            # empty rather than taking the three families beside it down with it.
+            continue
     return tuple(found)
 
 

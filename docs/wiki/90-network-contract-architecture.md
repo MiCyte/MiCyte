@@ -113,6 +113,21 @@ the start.
 An epoch is minted **once**: re-minting the *same* bytes is idempotent, different
 bytes raises. That is what makes collection-by-re-request safe (below).
 
+**The signing key is derived from the address under a root (2026-10-09).** The
+operator's rule: keys are minted from msn_ids so that they are always the same.
+A key that was a function of the public address alone would be anyone's, so the
+derivation is `HKDF-SHA256(root_seed, salt="mycite.v2.identity.v1",
+info="<msn_id>|<generation>")` → the Ed25519 seed (`instance_keys.derive_signing_seed`).
+The root (`keys/root.seed`) is generated once per instance; the same address under
+the same root always derives the same key, and `recover_instance_key` re-derives a
+lost key file from a restored root. A readdressed msn is a new key; a rotation is
+the next generation; the key FILE is still what signs, so nothing that reads a key
+changed. The grantor's service keys follow the same rule with an HMAC
+(`grantor_keys.derive_service_key`): the same alias always gets the same key, and
+the host verifies a presented key by recomputing it, never by trusting a stored copy.
+Per-contract symmetric keys stay random and handshake-minted; determinism is for
+identity, not for sessions.
+
 The audit deny-list at `local_audit/service.py:18-30` forbids persisting key
 material into the local log, and still does.
 
@@ -245,6 +260,15 @@ it can be trusted through an untrusted relay, and whether FND's key is pinned at
 ship time or bootstrapped. FND is the de-facto trust root of this network and that
 should be a decision, not a default.
 
+**The intent, stated (operator, 2026-10-08).** Anyone can host a local instance and
+still take part in the broader network, and any other party can choose to act as the
+central registrar and set its own standard of agreement; the public library already
+takes the registrar as a parameter (`micyte/domains/registry/engine.py`,
+`authority_msn_id`). For ease of adoption, FND supports this informal organization and
+micyte.com to act as the party its instances cooperate with. What the host still
+hardcodes, and what a second registrar would need, is in
+[`96-accounts-and-hosting.md`](96-accounts-and-hosting.md).
+
 ### 2. Resolving a magnet reference against a remote instance
 
 The cooperation convention specifies the *reference*
@@ -303,8 +327,11 @@ resolvable citation.**
 8. **Accounts / aliases** — per the cooperation convention, once 6 and 7 hold.
 
 **Not built, and the honest reason:** no delivery between two *live* instances has
-ever happened. FND publishes the only signature and the only endpoint in a
-236-node registry, and it is not its own counterparty. The two-instance proof is
+ever happened. Since 2026-10-11 eight cards in the 243-node registry publish a signature
+(FND and the seven instances it hosts, each declared through
+`fnd_app/scripts/declare_instance_card.py`), but all eight run on one host and FND
+publishes the only endpoint; no two instances on different machines have exchanged a
+contract. The two-instance proof is
 `fnd_app/tests/integration/test_contract_delivery_over_tcp.py` — a real socket,
 two private directories.
 

@@ -34,10 +34,17 @@ from micyte.tools._packages_manifest import declaration_digest
 
 
 def current() -> dict[str, dict[str, str]]:
-    from micyte.tools._packages import catalogue
+    """What MICYTE ships, digested. NOT what this deployment offers.
+
+    `micyte_packages()` and not `catalogue()` since 2026-10-04: a host may contribute a
+    package of its own (`register_host_package`), and locking one would put a
+    deployment's private application in the public package's lockfile — the file that
+    ships in the cut and is read by every instance deciding whether to update.
+    """
+    from micyte.tools._packages import micyte_packages
 
     return {p.package_id: {"version": p.version, "digest": declaration_digest(p)}
-            for p in sorted(catalogue(), key=lambda p: p.package_id)}
+            for p in sorted(micyte_packages(), key=lambda p: p.package_id)}
 
 
 def read_lock() -> dict[str, dict[str, str]]:
@@ -71,8 +78,19 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.check:
         drift = sorted(p for p in now if locked.get(p) != now[p])
-        if drift:
-            print("lock is behind the build for: " + ", ".join(drift))
+        # A PACKAGE THE LOCK HOLDS AND THE BUILD NO LONGER SHIPS (2026-10-04). The check
+        # iterated `now` only, so a package LEAVING the catalogue was invisible and the
+        # lock would carry its entry forever — an instance comparing against the lock
+        # would be told a package exists that nothing can install. The same one-direction
+        # gap `test_the_registry_is_exactly_the_pinned_set` was rewritten to close:
+        # "`assertLessEqual` ... gated only ADDITIONS".
+        withdrawn = sorted(set(locked) - set(now))
+        if drift or withdrawn:
+            if drift:
+                print("lock is behind the build for: " + ", ".join(drift))
+            if withdrawn:
+                print("the lock still names, and this build no longer ships: "
+                      + ", ".join(withdrawn))
             return 1
         print(f"{len(now)} packages match the lock")
         return 0

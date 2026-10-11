@@ -41,7 +41,9 @@ from micyte.core.datum_ops.datum_resolve import as_text
 from micyte.ports.tool_package import DocumentRequirement, ToolRequirement
 from micyte.state_machine.portal_shell.shell_schemas import WORKBENCH_UI_TOOL_ROUTE
 
+from ._composition import composed_ids
 from ._registry import register
+from .agronomics_viewer import COMPOSES as AGRONOMICS_COMPOSES
 from .ledger_books import OfferLedger, ProductCatalog, SalesLedger, SupplyLedger
 from .stock_ledger import StockLedger
 
@@ -158,6 +160,14 @@ TABS: tuple[tuple[str, str, Any], ...] = (
     ("offering", "Offering", OfferLedger),
 )
 
+#: What this hub composes: its own tabs, PLUS the farm panes it lifts whole from the
+#: `agronomics_viewer` library when the sandbox holds a `farm_profile`. The lifted half
+#: is named by that module, not re-typed here — the hub composes whatever the builder
+#: builds, and two lists of the same thing drift.
+COMPOSES: tuple[str, ...] = composed_ids(
+    factory() for _tab, _label, factory in TABS if factory is not None
+) + AGRONOMICS_COMPOSES
+
 
 class Brevat:
     """The surfaces an instance that sells goods needs, in one place."""
@@ -172,6 +182,8 @@ class Brevat:
     applies_to_archetype: tuple[str, ...] = ()
     applies_to_source_kind: tuple[str, ...] = ()
     wants_surface_query = True
+    #: What this hub composes. See `COMPOSES`.
+    composes: tuple[str, ...] = COMPOSES
     #: follows the instance switcher.
     icon = "brevat"
     #: ANY-OF: a farm (the specialization lights by shape), or an instance already

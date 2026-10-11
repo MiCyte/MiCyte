@@ -41,12 +41,37 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# `micyte_packages()` and NOT `catalogue()` since 2026-10-04 (TASK-2026-10-02-002 P4).
+#
+# This file is in `micyte/tests/`, which the public cut SHIPS and the published
+# repository's CI runs — so what it may assert about is what MiCyte ships, and nothing
+# more. `catalogue()` is what a DEPLOYMENT offers: MiCyte's packages plus any the host
+# registers (`register_host_package`). Two of these tests asserted the exact app lineages
+# and the exact namespace claims, so on this host they counted a host-contributed package
+# and in a published install they would have counted one fewer — a test that passes in one
+# tree and fails in the other, which is the whole class of failure the public suite exists
+# to catch rather than to contain.
+#
+# Aliased so the rest of the file reads unchanged, and the alias name says which question
+# is being asked.
 from micyte.tools import all_tools
-from micyte.tools._packages import catalogue
+from micyte.tools._packages import micyte_packages as catalogue
 
-#: Named tabs with no tool behind them. Shrinks as each is built; a tool arriving for one
-#: of these should move it into `tools`, and this list is where somebody notices.
-TABS_WITHOUT_TOOLS = ("newsletter", "analytics", "email", "contacts")
+#: Named tabs with no SURFACE behind them. Shrinks as each is built; a tool arriving for
+#: one of these should move it into `tools`, and this list is where somebody notices.
+#:
+#: EMPTY since 2026-10-04, and the four that left it are why the staleness check below
+#: grew a second dimension. All four arrived WITHOUT becoming registered tools —
+#: `newsletter` and `contacts` as views of the Authoring tab (`pim_design.TABS`),
+#: `analytics` and `email` as port-backed panes `pim_overview` builds itself from
+#: `FEATURES` — so `test_the_list_of_absent_tabs_does_not_go_STALE`, which only asked
+#: whether each was in the tool registry, kept excusing an absence that had ended on
+#: 2026-08-29. The summary it checked went on telling a client that four tabs they could
+#: see were "planned ... with no tool behind them yet" for five weeks.
+#:
+#: A tab is a PANE and a pane need not be a tool. That is the sentence this list did not
+#: know, and the check below now knows it.
+TABS_WITHOUT_TOOLS: tuple[str, ...] = ()
 
 
 def _pim():
@@ -75,14 +100,13 @@ class TheNamespaceInherits(unittest.TestCase):
                   for p in catalogue()
                   if getattr(p, "is_app", False) and p.app_sandbox is not None
                   and not p.app_sandbox.inherits_namespace}
-        # `grantor` joined 2026-08-24, and its reason is the sharpest of the three:
-        # INHERIT resolves from the anchor's `copied_from`, and the grantor anchor records
-        # none — so it would fall back to FND's core `system` anchor, the one namespace of
-        # six with NO lcl vocabulary. FND is the only instance this app runs on, so it is
-        # guaranteed to hit that. Stated, and checked against `field_registry`'s own
-        # `grantor: farm` when the claim is registered at install.
-        self.assertEqual(
-            stated, {"quiar": "registrar", "brevat": "farm", "grantor": "farm"})
+        # `grantor` joined 2026-08-24 and left this assertion on 2026-10-04: it is a
+        # HOST-contributed package now, and this file reads what MiCyte ships. Its reason
+        # for stating a namespace was the sharpest of the three and is recorded where the
+        # declaration now lives — INHERIT resolves from the anchor's `copied_from`, the
+        # grantor anchor records none, and the fallback is the one namespace with no lcl
+        # vocabulary.
+        self.assertEqual(stated, {"quiar": "registrar", "brevat": "farm"})
 
 
 class ItDeclaresOnlyWhatItCanServe(unittest.TestCase):
@@ -106,15 +130,32 @@ class ItDeclaresOnlyWhatItCanServe(unittest.TestCase):
                 self.assertIn(tab, summary)
 
     def test_the_list_of_absent_tabs_does_not_go_STALE(self) -> None:
-        """If a tool is built for one of these, it belongs in `tools` and out of here —
-        otherwise this file keeps excusing an absence that has ended."""
+        """If a SURFACE is built for one of these, it belongs out of here — otherwise
+        this file keeps excusing an absence that has ended.
+
+        TWO dimensions since 2026-10-04, because the first version had only one and all
+        four entries escaped through the gap. It asked whether the tab had become a
+        registered TOOL; the four became panes instead — built by the hub itself from
+        `FEATURES`, or views of the Authoring tab in `pim_design.TABS` — and a pane is
+        not in the tool registry. So the list excused four tabs a client could already
+        see, and the summary this file checks told them those tabs did not exist.
+        """
+        from micyte.tools import pim_design, pim_overview
+
         registered = {t.tool_id for t in all_tools()}
+        panes = {str(feature.get("id") or "") for feature in pim_overview.FEATURES}
+        panes |= {str(tab[0]) for tab in pim_design.TABS}
         for tab in TABS_WITHOUT_TOOLS:
             with self.subTest(tab=tab):
                 self.assertNotIn(
                     tab, registered,
                     f"{tab!r} is a registered tool now — declare it in PIM's tools and "
                     "drop it from TABS_WITHOUT_TOOLS")
+                self.assertNotIn(
+                    tab, panes,
+                    f"{tab!r} is a PANE that PIM draws now (pim_overview.FEATURES or "
+                    "pim_design.TABS) — drop it from TABS_WITHOUT_TOOLS and correct the "
+                    "summary, which is currently telling a client the tab is not offered")
 
     def test_its_hub_is_one_of_its_own_tools(self) -> None:
         self.assertIn(_pim().hub_tool, _pim().tools)
@@ -157,7 +198,14 @@ class ItIsAnAppLineage(unittest.TestCase):
         apps = sorted(p.package_id for p in catalogue() if getattr(p, "is_app", False))
         # `enchir` is the sixth (2026-09-10): the projects a client keeps and how their
         # site offers them up, employing `site_hosting` for the profile editor.
-        self.assertEqual(apps, ["brevat", "enchir", "grantor", "oveure", "pim", "quiar"])
+        #
+        # `grantor` LEFT this list on 2026-10-04 and is still the fifth by arrival. It is
+        # a HOST-contributed package now (TASK-2026-10-02-002 P4): an operator's own
+        # application over the clients they host, declared on the host's side and absent
+        # from what MiCyte ships. A published install has five app lineages; this
+        # deployment has six, which is `catalogue()`'s answer and not this file's
+        # question.
+        self.assertEqual(apps, ["brevat", "enchir", "oveure", "pim", "quiar"])
 
     def test_it_declares_the_FND_seam(self) -> None:
         """The port is the point. Without one PIM is a sandbox with nothing to fill it —
@@ -215,10 +263,15 @@ class ItIsAnAppLineage(unittest.TestCase):
         operation.
         """
         declared = {d.port_id: set(d.operations) for d in _pim().port_declarations}
+        # Seven since 2026-10-06: `contact.set_subscription`, one reader on or off the
+        # list by hand from the Contacts view — a decision about a PERSON, which neither
+        # mailing the list nor editing a page is, so it is its own grant too. Eight since
+        # 2026-10-07: `article.send`, offered by the page since 2026-09-13 and granted on
+        # every live binding, but never written into what PIM DECLARES it employs.
         self.assertEqual(
             declared.get("site_hosting"),
             {"page.list", "article.publish", "article.retire", "analytics.read",
-             "content.replace", "asset.upload"})
+             "content.replace", "asset.upload", "article.send", "contact.set_subscription"})
 
     def test_each_site_operation_is_distinct(self) -> None:
         # Six names, six permissions. If two ever collapse to one string, an operator

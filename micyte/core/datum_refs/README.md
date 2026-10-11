@@ -1,6 +1,6 @@
 # Datum Refs
 
-Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
+Authority: [../../../docs/wiki/separation_and_responsibility.md](../../../docs/wiki/separation_and_responsibility.md)
 
 `micyte/core/datum_refs/` owns the phase-02 MVP datum-ref surface.
 

@@ -5,6 +5,41 @@ repository is tagged `v<version>` and the wheel on its release page is the artif
 `docs/standards/release_and_versioning.md` is the process; `scripts/publish_micyte.py` is
 the cut. A section is added when the version is bumped, not after.
 
+## 0.5.0 — 2026-10-11
+
+The first release cut into `MiCyte/MiCyte`, the MiCyte organization's repository
+(0.1.0–0.4.1 were carried over from the old one with their history, tags and
+byte-identical wheels).
+
+### Network
+- An instance **declares** its contact card to its registrar
+  (`micyte/domains/registry/card_projection.py`): the card is projected from the
+  instance's own `msn_profile` under the numbering in which the profile names itself, and
+  a projection that names nobody is refused rather than guessed. A declaration owns only
+  the instance's own cells (local domain, website domain, signature, endpoint); a bit-
+  encoded cell declares as its text.
+- A hosted service reached by **key** (`micyte/adapters/hosted/`): a transport that
+  authorizes each call before it sends, a 0600 credential, and site and mail adapters
+  built from it, for an instance its host does not run.
+- The **payment instrument** port has its first fill shape exercised end to end (the
+  fill itself is the host's).
+
+### Tools and gadgets
+- PIM: the plan an account is on, its allowance, and the upgrade it can ask for; seven
+  declared site operations; a client dashboard read at a glance (facts bare, sheets
+  framed, actions as icon buttons).
+- Authoring is a gallery of versions; Contacts reveals each recipient on a per-row
+  toggle; the newsletter's dispatch history has its own locked writer.
+- Brevat: a stock movement out of more than is on hand is refused.
+- The desk rail draws exactly what the Gadgets gallery sanctions; every gadget has a door.
+- Port bindings are resolved by their instance's address, never by the first match on a
+  port; the declared seam is the seam that runs.
+
+### Docs
+- Every relative link in the repository's Markdown resolves (41 were dead), pinned by
+  `test_every_relative_doc_link_resolves`; the contracts and standards indexes list every
+  page; the roadmap and the accounts ledger say what is built as of this release.
+
 ## 0.4.1 — 2026-09-30
 
 - The public suite passes in the public repository. 0.4.0's cut shipped five tests that

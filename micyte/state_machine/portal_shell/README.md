@@ -1,6 +1,6 @@
 # Portal Shell
 
-Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
+Authority: [../../../docs/wiki/separation_and_responsibility.md](../../../docs/wiki/separation_and_responsibility.md)
 
 `micyte/state_machine/portal_shell/` owns the shared shell contracts for the
 single V2 portal shell:

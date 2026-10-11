@@ -78,6 +78,7 @@ from micyte.ports.tool_package import (
 )
 from micyte.state_machine.portal_shell.shell_schemas import WORKBENCH_UI_TOOL_ROUTE
 
+from ._composition import composed_ids
 from ._quiar_clients_pane import ClientsPane
 from ._quiar_jobs_pane import JobsPane
 from ._registry import register
@@ -118,6 +119,15 @@ TABS: tuple[tuple[str, str, Any], ...] = (
 TAB_QUERY = "erp_tab"
 DEFAULT_TAB = "domain"
 
+#: What this hub composes, DERIVED from the table above rather than typed beside it.
+#: `quiar_overview` and `project_manager` are NOT here and must not be: their tabs were
+#: folded into Domain in 2026-08-19, and this module's docstring already says where they
+#: went — "Every pane here is also still reachable on its own from the menubar search."
+#: That sentence is the promise, and `LIVE_TOOL_IDS` is where it is kept.
+COMPOSES: tuple[str, ...] = composed_ids(
+    factory() for _tab, _label, factory in TABS if factory is not None
+)
+
 
 class Quiar:
     """The surfaces an instance that sells work needs, in one place."""
@@ -132,6 +142,8 @@ class Quiar:
     applies_to_archetype: tuple[str, ...] = ()
     applies_to_source_kind: tuple[str, ...] = ()
     wants_surface_query = True
+    #: What this hub composes. See `COMPOSES`.
+    composes: tuple[str, ...] = COMPOSES
     #: empty so it follows the instance switcher — the same books the operator is looking at.
     icon = "quiar"
     #: What an instance must HOLD before this works. Read by the install ledger, which
@@ -218,4 +230,4 @@ class Quiar:
 
 register(Quiar())
 
-__all__ = ["DEFAULT_TAB", "TABS", "TAB_QUERY", "Quiar"]
+__all__ = ["COMPOSES", "DEFAULT_TAB", "TABS", "TAB_QUERY", "Quiar"]

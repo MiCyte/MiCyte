@@ -1,6 +1,6 @@
 # Audit Log Port
 
-Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
+Authority: [../../../docs/wiki/separation_and_responsibility.md](../../../docs/wiki/separation_and_responsibility.md)
 
 `micyte/ports/audit_log/` owns the MVP audit-log seam only.
 

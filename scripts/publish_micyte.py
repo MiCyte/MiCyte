@@ -38,7 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-PUBLIC_REPO = "Fruitful-Network-Development/micyte"
+PUBLIC_REPO = "MiCyte/MiCyte"
 PUBLIC_REPO_URL = f"git@github.com:{PUBLIC_REPO}.git"
 DEFAULT_OUT = Path("/srv/tmp/micyte-publish")
 
@@ -177,7 +177,16 @@ def export(out: Path, *, clone: bool = True) -> Path:
 
 
 def gate(repo: Path) -> bool:
-    result = _run([sys.executable, str(repo / "scripts" / "release_gate_scan.py"), "--repo", str(repo)], check=False)
+    """The release gate over the EXPORT, not only its docs.
+
+    `--export` because until 2026-10-03 this passed no flag and the scanner read
+    `git ls-files docs`: it judged 68 files while this function had just copied 494, so the
+    "a private file is still present" half was a tautology (the private docs are filtered out
+    at :155 before the gate ever looks) and `micyte/`, `README.md`, `.gitignore` and the six
+    public scripts were never scanned at all. What ships is what must be judged.
+    """
+    result = _run([sys.executable, str(repo / "scripts" / "release_gate_scan.py"),
+                   "--repo", str(repo), "--export"], check=False)
     sys.stdout.write(result.stdout)
     return result.returncode == 0
 

@@ -47,3 +47,30 @@ in the file the host parses at boot is a fact somebody should hear before the bo
   problem as a sentence; a writer that would leave the file invalid refuses.
 * Grants are not bindings: a binding says an adapter MAY be called; a grant says WHO may
   call it (`92-ports-as-four-layers.md` §4). Neither is written by installing a package.
+
+## The address
+
+A binding is addressed by the pair `(msn_id, sandbox)` — `msn_id` names the instance, each
+of `sandbox_ids` a sandbox of THAT instance; `PortBinding.addresses` lists the pairs. The
+name alone is not a key: a portal serving several instances will hold several bindings
+with the SAME sandbox name — every instance that installs one app names its sandbox after
+that app — so the name resolves nothing on its own.
+
+(This paragraph carried a count of one deployment's bindings and the number of clients
+they belong to until 2026-10-04. It was a measurement, it was accurate, and it was a
+client census on a page the public cut publishes. The RULE is what this page is for;
+`fnd_app/scripts/verify_port_binding_addresses.py` is where an operator measures their
+own.)
+
+* `msn_id` is required and non-empty — by the contract at read time and by this schema's
+  validator before a write.
+* `PortBindingSet.for_instance(port, msn_id=, sandbox=)` is the one resolver. `for_port`
+  is a listing for operator tables and reverse lookups matched by a credential's msn;
+  `for_port(...)[0]` is the cross-tenant read and
+  `fnd_app/tests/architecture/test_a_binding_is_resolved_by_its_address.py` refuses it in
+  production code.
+* A reader given a sandbox name and no instance binds nothing (`pim_overview.seam_state`).
+* The verifier exists because this rule arrived after the bindings did
+  (`verify_port_binding_addresses.py`). It reports whether every binding on a store
+  resolves by its address, which is the question an operator adopting this rule has.
+

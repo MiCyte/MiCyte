@@ -2,8 +2,12 @@
 
 ## Start Here
 
-This repository is MiCyte: a MOS-backed datum operating environment and the portal
-shell over it. One portal shell, one application authority model.
+This repository is MiCyte: a standard for keeping records and building applications so
+that people can organize themselves and connect without permission — built as a
+MOS-backed datum operating environment and the portal shell over it. One portal shell,
+one application authority model. What that purpose means for accounts, hosting and the
+registry, and which parts of it are built, is
+[`docs/wiki/96-accounts-and-hosting.md`](wiki/96-accounts-and-hosting.md).
 
 - Canonical public entry: `/portal` -> `/portal/system`
 - Canonical shell endpoint: `/portal/api/v2/shell`
@@ -30,6 +34,8 @@ This repo uses a few documentation families on purpose:
   [`docs/wiki/`](wiki/)
 - standards and authoring rules:
   [`docs/standards/`](standards/)
+
+  The standards: [`agent_task_template_examples.md`](standards/agent_task_template_examples.md), [`agent_yaml_schema.md`](standards/agent_yaml_schema.md), [`base_core_vocabulary.md`](standards/base_core_vocabulary.md), [`development_process.md`](standards/development_process.md), [`documentation_style_guide.md`](standards/documentation_style_guide.md), [`portal_shell_refactor_guardrails.md`](standards/portal_shell_refactor_guardrails.md), [`release_and_versioning.md`](standards/release_and_versioning.md).
 
 Code-adjacent docs own bounded package responsibility. Repo-wide docs own
 cross-package, cross-tool, or cross-repo meaning.

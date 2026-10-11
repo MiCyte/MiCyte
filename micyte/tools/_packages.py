@@ -35,6 +35,7 @@ from micyte.ports.tool_package import (
     PortFunction,
     ScopedFeature,
     ToolPackage,
+    ToolPackageError,
     ToolPackageSource,
     installable_tools,
 )
@@ -66,14 +67,19 @@ def _pinned(requirement: Any) -> Any:
     return replace(requirement, documents=documents, documents_any=documents_any)
 
 
-def _package(package_id: str, *, version: str, label: str, summary: str,
-             tools: tuple[str, ...], icon: str = "", **app_fields: Any) -> ToolPackage:
+def build_package(package_id: str, *, version: str, label: str, summary: str,
+                  tools: tuple[str, ...], icon: str = "", **app_fields: Any) -> ToolPackage:
     """Build a package, taking `requires` and `writes` FROM THE TOOLS THEMSELVES.
 
     Never restated here. A package that carried its own copy of what its tools require
     would be a second statement of the same fact, free to drift from the first — the rule
     ``port_binding`` states about a binding's declared writes, and the reason
     ``_write_owners`` refuses a second declaration of one action.
+
+    PUBLIC since 2026-10-04 (it was `_package`), because a HOST declaring a package of
+    its own needs this exact derivation. A host that built a `ToolPackage` directly would
+    be the second statement this function exists to prevent — and it would get the
+    archetype pinning wrong too, which `_pinned` does from the lockfile.
     """
     requires_all = [_pinned(requirements_for(tool_id)) for tool_id in tools]
     writes: list = []
@@ -131,158 +137,81 @@ def _unique(items: Any, *, key: Any) -> tuple:
     return tuple(out)
 
 
-def catalogue() -> tuple[ToolPackage, ...]:
-    """Every package this build offers.
+#: Packages a HOST contributes beyond the ones MiCyte itself ships.
+#:
+#: WHY THIS SEAM EXISTS (2026-10-04, TASK-2026-10-02-002 P4). The `grantor` package is
+#: FND's application over the clients FND hosts — its own prose says "the grantor
+#: application is only on the FND instance" — and until this it was declared here, in the
+#: package the public cut publishes. `micyte/__init__.py` says "This package must import
+#: nothing of FND's grantee services"; it did not import them, it CONTAINED them, and the
+#: boundary test passed because import-cleanliness is not domain-cleanliness.
+#:
+#: A package cannot simply be deleted from this file and declared somewhere else, because
+#: `build_package()` derives `requires` and `writes` FROM THE TOOLS THEMSELVES — so a
+#: declaration whose tools are not registered in this build builds a package with empty
+#: requirements, which is a silently wrong declaration rather than an absent one. The
+#: declaration and its tools have to travel together, and this is where the host says so.
+#:
+#: Keyed by package id, so registering twice is a replacement rather than a duplicate —
+#: the module that registers may be imported more than once by a test.
+_HOST_PACKAGES: dict[str, Any] = {}
+
+
+def register_host_package(package_id: str, builder: Any) -> None:
+    """A host declares a package of its own. Called at the host's import time.
+
+    ``builder`` is a callable returning a :class:`ToolPackage`, never a built package:
+    the catalogue is built at CALL time because it reads the tool registry, and a built
+    package handed in here would freeze whatever happened to be imported first — the
+    exact mistake `micyte_packages`' docstring was written against.
+    """
+    token = str(package_id or "").strip()
+    if not token:
+        raise ToolPackageError("a host package needs a package_id")
+    if not callable(builder):
+        raise ToolPackageError(
+            f"host package {token!r} must register a BUILDER, not a built package — the "
+            "catalogue reads the tool registry at call time")
+    _HOST_PACKAGES[token] = builder
+
+
+def host_packages() -> tuple[ToolPackage, ...]:
+    """What the HOST contributes, in id order. Empty in a public build, by construction."""
+    return tuple(_HOST_PACKAGES[key]() for key in sorted(_HOST_PACKAGES))
+
+
+def micyte_packages() -> tuple[ToolPackage, ...]:
+    """Every package MICYTE itself ships — what is locked, exported and published.
+
+    The answer `scripts/lock_packages.py` pins and
+    `fnd_app/scripts/export_micyte_package_catalog.py` writes to micyte.com. It is
+    deliberately NOT what this deployment offers: a host may contribute its own
+    application (see `_HOST_PACKAGES`), and locking a host's package would put a
+    deployment's private business in the public package's lockfile.
 
     Built at call time rather than at import, because it reads the tool registry — and a
     module-level constant would freeze whatever happened to be imported first.
     """
     return (
-        _package(
-            # v2 of the package that shipped as `handyman_erp` 1.0.0 — the generalized CRM
-            # lineage is Quiar, and the package offered to trade instances is
-            # Quiar – Freelancer (TASK-2026-08-14-002 Phase 3). Nothing was installed
-            # under the old id on any live instance, so the id changes with the version.
-            "quiar",
-            # 2.1.0: `rolodex` left the tool list when the tool was retired
-            # (2026-08-16; a contacts document now opens as the same primitive in
-            # the Compendium). The package_id is the identity install records key
-            # on and it does not move with a version.
-            #
-            # 2.2.0: the hub opens on its DOMAIN. `lcl_editor` joins the tool list
-            # because the tab is that tool, and `quiar_overview`/`project_manager`
-            # stay in it although their tabs went — a package lists what an instance
-            # may reach, and both are still reachable from the menubar.
-            version="2.4.0",
-            label="Quiar – Freelancer",
-            summary=(
-                "Book work, group it into projects, keep the people you book it for, and "
-                "see the week. Nothing in it is trade-specific: a job's kind is a node the "
-                "instance mints for itself."
-            ),
-            # `lcl_editor` is deliberately NOT here. A tool has ONE owning package —
-            # `_tool_owners` refuses a second claim by name — and Oveure owns it. The
-            # Domain TAB does not need ownership: a tab is a DECLARATION of a pane, built
-            # server-side from that tool's own `panel_payload`, which is the same seam the
-            # calendar tab and Oveure's inbox pane already use.
-            tools=("quiar", "quiar_overview", "job_manager", "project_manager",
-                   "contacts_manager", "calendar"),
-            icon="quiar",
-            hub_tool="quiar",
-            app_sandbox=AppSandbox(
-                namespace="registrar",
-                why=(
-                    "A booking instance's anchor is copied verbatim from the registrar's, "
-                    "so its numbering IS the registrar's — installing this app records "
-                    "that claim instead of a hand edit and a deploy."
-                ),
-                # The hub opens on its DOMAIN, and a node there can denote a document —
-                # so the sandbox is seeded with the reserved `documents` branch beside the
-                # operator's own tree rather than growing one on the first write.
-            ),
-            # Still no port declarations, and still honestly: no Quiar tab calls a port
-            # yet. The email and hosting seams are declared with the first feature that
-            # employs them, not before — a declared seam nothing fills is decoration.
-            scoped_features=(
-                ScopedFeature(
-                    tool_id="calendar",
-                    scope="app_sandbox",
-                    why=(
-                        "The hub's calendar tab is this instance's own schedule, pinned; "
-                        "the standalone calendar tool is the cross-sandbox surface with "
-                        "per-sandbox toggles."
-                    ),
-                ),
-                ScopedFeature(
-                    tool_id="contacts_manager",
-                    scope="app_sandbox",
-                    why=(
-                        "The hub's Clients tab edits this sandbox's own contacts; "
-                        "opening a contacts document in the Compendium is the same "
-                        "primitive on that document's own books."
-                    ),
-                ),
-            ),
-        ),
-        _package(
-            # The generalized ERP lineage (TASK-2026-08-14-002 Phase 4). The specialized
-            # package for farm instances — Brevat – Farmers, which absorbs the farm panes
-            # and retires `agronomics` at live parity — is the Farmers phase's, not this
-            # one's: this is generic Brevat, and its ledger tabs render their honest
-            # empty/error states until the modern archetype-row ledger lands (see
-            # `brevat.py`'s header for what Phase 4 verification found).
-            "brevat",
-            # 1.1.0 (2026-09-12): the Stock tab and its `stock_log` document — what came
-            # in and what went out, and the on-hand figure summed from it.
-            version="1.3.0",
-            label="Brevat",
-            summary=(
-                "Products, supply, sales and the standing offer, for an instance that "
-                "sells goods. The commerce seam is DECLARED here and bound — and "
-                "granted — by the operator on Ports, never by installing."
-            ),
-            # The MODERN ledger (Farmers phase): installing provisions invoices/sales/
-            # offering as archetype-row documents the three managers append to. The old
-            # panes stay registered for the lifted farm tabs, outside this package.
-            # `product_catalog` carries the `product_profiles` requirement, so
-            # installing PROVISIONS the document its Products tab appends to.
-            # Without it the tab is a screen that cannot be filled, which is the
-            # state the farm instance was measured in on 2026-09-02.
-            # `stock_log` joins 2026-09-12 (TASK-2026-09-12-001): a package provisions the
-            # documents ITS TOOLS declare, so the Stock tab's log arrives with the app
-            # rather than being minted by the first movement somebody tries to record.
-            tools=("brevat", "product_catalog", "stock_log", "supply_ledger",
-                   "sales_ledger", "offer_ledger"),
-            icon="brevat",
-            hub_tool="brevat",
-            app_sandbox=AppSandbox(
-                namespace="farm",
-                why=(
-                    "A goods-selling instance's anchor comes from the farm template "
-                    "(`bootstrap_farm_sandbox`), whose numbering carries the fiat/price "
-                    "babelette the ledger writes against — installing records that claim "
-                    "instead of a hand edit and a deploy."
-                ),
-                # The app's own datum-doc default BEYOND what its tools require: the
-                # planting book (supply-backed planting, batch re-point). The planting
-                # tools are the lifted farm tabs — a LIBRARY, not package tools — so
-                # their document cannot ride the tools-derived requirements; this seam
-                # exists for exactly that ("defaults for datum docs").
-                documents=(
-                    DocumentRequirement(
-                        name="plantings", archetype="planting",
-                        why="supply batches committed to plots — the planting book "
-                            "add_planting appends to"),
-                ),
-            ),
-            # The app's ONE port, and the program's first real declaration: the
-            # commerce_offering seam the Offering tab already consumes (catalog +
-            # availability through `_offering`), with the payment egress named at the
-            # grain an operator would withhold. Declared, never bound: filling it with
-            # `DatumOfferingAdapter` (and granting the PayPal calls) is the operator's
-            # decision on Ports.
-            port_declarations=(
-                PortDeclaration(
-                    port_id="commerce_offering",
-                    why=(
-                        "what this instance offers, published and quotable; payment "
-                        "capture rides PayPal when — and only when — an operator binds "
-                        "and grants it"
-                    ),
-                    calls=(
-                        DeclaredCall(service="paypal", operation="order.create"),
-                        DeclaredCall(service="paypal", operation="order.capture"),
-                    ),
-                ),
-            ),
-        ),
-        _grantor_package(),
+        _quiar_package(),
+        _brevat_package(),
         _oveure_package(),
         _enchir_package(),
         _pim_package(),
         _fnd_service_package(),
         _claude_package(),
     )
+
+
+def catalogue() -> tuple[ToolPackage, ...]:
+    """Every package THIS DEPLOYMENT offers: MiCyte's own, plus the host's.
+
+    The answer every surface, installer and gate wants — "what can be installed here" —
+    which is why this keeps the name its thirty-odd callers already use. The narrower
+    question, "what does MiCyte ship", is `micyte_packages()`, and only two callers ask
+    it: the lock and the public exporter.
+    """
+    return micyte_packages() + host_packages()
 
 
 # --------------------------------------------------------------------------- #
@@ -390,6 +319,7 @@ def _fnd_service_package() -> ToolPackage:
         OPERATION_ARTICLE_SEND,
         OPERATION_ASSET_SWAP,
         OPERATION_ASSET_UPLOAD,
+        OPERATION_CONTACT_SET_SUBSCRIPTION,
         OPERATION_CONTENT_REPLACE,
         OPERATION_PAGE_LIST,
         OPERATION_PROFILE_EDIT,
@@ -415,7 +345,9 @@ def _fnd_service_package() -> ToolPackage:
         # operator who has already granted publishing is NOT thereby granting the mail,
         # because a version bump does not re-grant anything — the record of what they
         # agreed to is what `installed_packages` holds, and this has to be chosen.
-        version="1.6.0",
+        # 1.7.0 (2026-10-06): `contact.set_subscription` — one reader on or off a site's
+        # list, through the runtime's one subscription writer.
+        version="1.7.0",
         label="FND Service",
         summary=(
             "Connect this instance to what FND already runs for it: the mail — read "
@@ -624,6 +556,16 @@ def _fnd_service_package() -> ToolPackage:
                         ),
                     ),
                     PortFunction(
+                        operation=OPERATION_CONTACT_SET_SUBSCRIPTION,
+                        why=(
+                            "Put one reader on this site's newsletter list, or take one "
+                            "off, by hand — through the newsletter runtime's one "
+                            "subscription writer, so a toggle from PIM and a click on an "
+                            "unsubscribe link leave the same shape. Refuses an address the "
+                            "roster does not hold: a toggle is not a signup."
+                        ),
+                    ),
+                    PortFunction(
                         operation=OPERATION_PROJECT_EXPORT,
                         why=(
                             "Write a project document's view beside the site's assets, "
@@ -722,10 +664,21 @@ def _pim_package() -> ToolPackage:
     declared and NOT bound — binding is the operator's act on Ports, with the grant a
     separate act after that, exactly as oveure's AI seam ships.
 
-    The tabs are the honest part. Analytics, Contacts, Newsletters and Email have no
-    tool behind them yet, so this package does not offer them; a package listing a tab
-    that cannot open is the gear the glyph library rejected, one layer up. It serves
-    `pim_overview` and nothing else. It also PROVISIONS a `contacts` document, which
+    The tabs are the honest part, and what that sentence means changed on 2026-08-29
+    without this prose or the summary beside it being corrected — the drift this very
+    class of comment exists to stop, caught 2026-10-03.
+
+    What was true when it was written: Analytics, Contacts, Newsletters and Email had no
+    tool behind them, and a package listing a tab that cannot open is the gear the glyph
+    library rejected, one layer up.
+
+    What is true now: `pim_overview` builds those tabs ITSELF, from the seam rather than
+    from a second registered tool, and `_TABS` gates each on what the sandbox holds and
+    what the port answers — Analytics and Email require `site_hosting` and
+    `email_provider` respectively, and a tab whose seam is unbound renders the reason
+    instead of an empty table. So the package still declares two tools and still offers
+    no tab that cannot open; the tabs it offers are simply more than two, because a tab
+    is a pane and a pane need not be a tool. It also PROVISIONS a `contacts` document, which
     quiar's `contacts_manager` opens on although this package does not declare that tool —
     a package decides what is provisioned, while `applies_to_archetype` decides what
     opens.
@@ -744,18 +697,20 @@ def _pim_package() -> ToolPackage:
     operator has asked for the old dashboard to remain until they say the cutover is
     ready, and this package binds nothing, grants nothing and sends nothing.
     """
-    return _package(
+    return build_package(
         "pim",
-        version="0.1.0",
+        # 0.2.0 (2026-10-06): Authoring is a gallery of versions, and declares
+        # `contact.set_subscription` for its Contacts view. 0.3.0 (2026-10-07): declares
+        # `article.send`, which it had offered undeclared since 2026-09-13.
+        version="0.3.0",
         label="PIM",
         summary=(
             "The client's own record of their provider-service relationship, held as "
             "datum documents in an isolated sandbox and fed through the ports their own "
-            "service key permits. The home tab says what the sandbox keeps and whether "
-            "the FND seam is bound and permitted; Design shows the client's own site and "
-            "publishes their writing to it. Analytics, Contacts, Newsletters and Email "
-            "are planned tabs with no tool behind them yet, so this package does not "
-            "offer them."
+            "service key permits. Home says what the sandbox keeps and what the client "
+            "pays; Authoring and Design are their site and the writing published to it; "
+            "Analytics, Email, Resources, Storage, Payment and Domain each light when "
+            "the seam that feeds them is bound and say why when it is not."
         ),
         # ITS OWN tool, and only its own. The first draft borrowed `contacts_manager`
         # from quiar and `artifacts` from the Compendium's shelf. Both were wrong:
@@ -765,7 +720,9 @@ def _pim_package() -> ToolPackage:
         # else's". Semantically wrong too: quiar's contacts are a CRM's, PIM's are people
         # who signed up on a website. Same word, different record.
         tools=("pim_overview", "pim_design"),
-        icon="folder",
+        # A symbol the sprite carries (icon_sprite.SYMBOLS). It said `folder` until
+        # 2026-10-07 — no such leaflet — and the gallery and rail drew the generic box.
+        icon="pim",
         hub_tool="pim_overview",
         app_sandbox=AppSandbox(
             # The one record kind PIM can honestly OPEN today. This package does not
@@ -869,8 +826,16 @@ def _pim_package() -> ToolPackage:
                 # words already on a page is not the risk of putting a new file at a
                 # public URL, and neither is publishing a piece — so an operator may
                 # grant any one of the three and withhold the others.
+                # `contact.set_subscription` joined 2026-10-06 for the Contacts view:
+                # one reader on or off the list by hand — a decision about a PERSON,
+                # which is neither mailing the list nor editing a page, so it is its
+                # own grant.
+                # `article.send` joined the DECLARATION 2026-10-07 — the Authoring page
+                # has offered it since 2026-09-13 and every live site binding grants it;
+                # the record of what PIM employs was behind the tool (side-2026-10-06-0001).
                 operations=("page.list", "article.publish", "article.retire",
-                            "analytics.read", "content.replace", "asset.upload"),
+                            "analytics.read", "content.replace", "asset.upload",
+                            "article.send", "contact.set_subscription"),
             ),
             # WHY THERE IS STILL NO `commerce_offering` HERE, stated because its absence
             # was the one gap in this manifest that nothing recorded a reason for.
@@ -918,149 +883,205 @@ def _pim_package() -> ToolPackage:
     )
 
 
-def _grantor_package() -> ToolPackage:
-    """GRANTOR — the operator's half of the hosting relationship, on FND and nowhere else.
+def _quiar_package() -> ToolPackage:
+    """Quiar – Freelancer — book work, group it, keep the people, see the week.
 
-    The depiction is explicit about where it runs: *"since the grantor application is only
-    on the FND instance, the actual application UI provided should allow me to change the
-    prices of services"*. And about who does what: *"clients merely interface with the
-    private channel to configure account information ... as well as obtain API keys"*.
+    A BUILDER FUNCTION since 2026-10-04, and that is the only change: the declaration
+    below is the one that was inline in `catalogue()`. Quiar and brevat were the two
+    largest packages in the catalogue and the only two declared inline, which meant
+    `TheDepictionMatchesTheDeclaration` in `micyte/tests/unit/test_pim_package.py` —
+    the guard that reads a package's PROSE and checks it against the tuple beside it —
+    silently skipped both. `_builder_prose` resolves `_<package_id>_package`, returned
+    "" for these two, and every assertion over them passed vacuously. A guard that
+    cannot see a package reports it clean.
 
-    ## Why an app rather than more channel
+    ## What the hub is, and where two of its tools went
 
-    `micyte.channels.register` REFUSES any channel that declares writes, and the module
-    says why: an anonymous request resolves to the operator identity, so "no write path
-    exists" is the only safe posture. Setting a price is a write. So the grantor CHANNEL
-    (the client's read-only view of their own row) and the grantor APPLICATION (this) are
-    two things wearing one name, and separating them is what lets the channel keep its
-    refusal untouched while the operator gets a surface that writes.
+    The hub opens on its DOMAIN: a job's kind is a node the instance mints for itself,
+    and a project is a node that can now hold the document saying what the project IS.
+    `quiar_overview` and `project_manager` keep their place in `tools` although their
+    tabs were folded into Domain on 2026-08-19 — a package lists what an instance may
+    REACH, and both are reachable from the menubar search.
 
-    ## It claims two tools and PROVISIONS three books
+    That sentence was false for six weeks and is true again as of 2026-10-04. Measured
+    2026-10-03: neither tool was in any hub's tabs, neither was in `LIVE_TOOL_IDS`, and
+    the architecture suite listed them as "quiar's Projects tab" and "quiar's default
+    tab" — tabs that had been deleted. Three places said they were reachable from the
+    menubar and nothing put them there. They are in `LIVE_TOOL_IDS` now, which is where
+    this prose always said they were.
 
-    This package does not declare `offer_ledger` and cannot: it is brevat's, and a tool
-    belongs to exactly one lineage. It does not declare `sales_ledger` for the same reason.
-    The first cut listed both, and `installable_tools` refused it — *"picking one here
-    would decide, invisibly, whose requirements get provisioned into the operator's
-    instance."*
+    ## Still no port declarations, and still honestly
 
-    The rule is no obstacle to reusing them, because a package does not decide what OPENS.
-    Those tools apply to the `invoice` and `offer` archetypes, so they open on any sandbox
-    holding a document of that archetype — including this one. What a package decides is
-    what gets PROVISIONED, which is what `app_sandbox.documents` is for: "the app's own
-    datum-doc defaults BEYOND what its tools require".
-
-    So the books are provisioned here and rendered by tools that already exist. Nothing is
-    duplicated, and no second definition of what a charge IS gets written.
-
-    `credit_ledger` IS claimed, because it is genuinely this lineage's: a farm has no free
-    trials, and nothing else offers the tab. So is `subscription_book` (TASK-2026-08-24-010):
-    what an alias HOLDS is a hosting fact, and a farm has no aliases.
-
-    So is `grantor_permissions` (2026-08-29). What every connected port MAY do is the
-    operator's fact about the hosting relationship — a farm has no clients' bindings to
-    permit — and it belongs beside the rate card rather than on Utilities > Ports, because
-    `port_binding_write_runtime` keeps connecting and permitting apart on purpose: "a form
-    that did both would make describing and permitting one gesture, and the gesture people
-    make is the permissive one". Two surfaces, two acts. What changed is that the second
-    one stopped requiring a text editor.
-
-    The cost book is provisioned and given no writing surface, and this package does not
-    declare `supply_ledger` — deliberately. In a farm sandbox `invoices` is what the farm
-    bought; in the grantor sandbox it is what AWS charged FND, written by a PROJECTION from
-    the operator tolling ledger (phase D) rather than by an operator typing entries. A
-    hand-entry surface for it would invite a cost figure that disagrees with the ledger it
-    mirrors.
-
-    ## The namespace is STATED, not inherited
-
-    `namespace="farm"`, against the grain of the two most recent apps, and measured rather
-    than assumed. INHERIT resolves from the anchor's `copied_from`, and the grantor
-    anchor — minted 2026-08-21 as a farm-template clone — records no such key; only a
-    `legacy_alias` naming the agro_erp anchor it came from. So an inherited claim would
-    fall back to the instance's core `system` anchor, and FND's speaks SYSTEM, the one
-    namespace of six with no lcl vocabulary at all. That is precisely the Oveure defect,
-    and this sandbox is guaranteed to hit it because FND is the only instance it runs on.
-
-    `field_registry` already states `"grantor": FARM`, and the claim registered at install
-    has to agree with it or `register_instance_namespace` refuses — which is the check that
-    makes stating it safe rather than a second opinion.
+    No Quiar tab calls a port. The email and hosting seams are declared with the first
+    feature that employs them, not before — a declared seam nothing fills is decoration.
     """
-    return _package(
-        "grantor",
-        version="0.3.0",
-        label="Grantor",
+    return build_package(
+        # v2 of the package that shipped as `handyman_erp` 1.0.0 — the generalized CRM
+        # lineage is Quiar, and the package offered to trade instances is
+        # Quiar – Freelancer (TASK-2026-08-14-002 Phase 3). Nothing was installed
+        # under the old id on any live instance, so the id changes with the version.
+        "quiar",
+        # 2.1.0: `rolodex` left the tool list when the tool was retired
+        # (2026-08-16; a contacts document now opens as the same primitive in
+        # the Compendium). The package_id is the identity install records key
+        # on and it does not move with a version.
+        #
+        # 2.2.0: the hub opens on its DOMAIN. `lcl_editor` joins the tool list
+        # because the tab is that tool, and `quiar_overview`/`project_manager`
+        # stay in it although their tabs went — a package lists what an instance
+        # may reach, and both are still reachable from the menubar.
+        version="2.4.0",
+        label="Quiar – Freelancer",
         summary=(
-            "The operator's side of the hosting relationship: what each service is "
-            "priced at, what each alias has been charged, and what has been credited "
-            "back. Prices are set here; the cost they are measured against is projected "
-            "from the operator tolling ledger. FND only."
+            "Book work, group it into projects, keep the people you book it for, and "
+            "see the week. Nothing in it is trade-specific: a job's kind is a node the "
+            "instance mints for itself."
         ),
-        tools=("grantor_overview", "credit_ledger", "subscription_book",
-               "grantor_tolling", "grantor_permissions"),
-        icon="grantor",
-        hub_tool="grantor_overview",
+        # `lcl_editor` is deliberately NOT here. A tool has ONE owning package —
+        # `_tool_owners` refuses a second claim by name — and Oveure owns it. The
+        # Domain TAB does not need ownership: a tab is a DECLARATION of a pane, built
+        # server-side from that tool's own `panel_payload`, which is the same seam the
+        # calendar tab and Oveure's inbox pane already use.
+        tools=("quiar", "quiar_overview", "job_manager", "project_manager",
+               "contacts_manager", "calendar"),
+        icon="quiar",
+        hub_tool="quiar",
+        app_sandbox=AppSandbox(
+            namespace="registrar",
+            why=(
+                "A booking instance's anchor is copied verbatim from the registrar's, "
+                "so its numbering IS the registrar's — installing this app records "
+                "that claim instead of a hand edit and a deploy."
+            ),
+            # The hub opens on its DOMAIN, and a node there can denote a document —
+            # so the sandbox is seeded with the reserved `documents` branch beside the
+            # operator's own tree rather than growing one on the first write.
+        ),
+        # Still no port declarations, and still honestly: no Quiar tab calls a port
+        # yet. The email and hosting seams are declared with the first feature that
+        # employs them, not before — a declared seam nothing fills is decoration.
+        scoped_features=(
+            ScopedFeature(
+                tool_id="calendar",
+                scope="app_sandbox",
+                why=(
+                    "The hub's calendar tab is this instance's own schedule, pinned; "
+                    "the standalone calendar tool is the cross-sandbox surface with "
+                    "per-sandbox toggles."
+                ),
+            ),
+            ScopedFeature(
+                tool_id="contacts_manager",
+                scope="app_sandbox",
+                why=(
+                    "The hub's Clients tab edits this sandbox's own contacts; "
+                    "opening a contacts document in the Compendium is the same "
+                    "primitive on that document's own books."
+                ),
+            ),
+        ),
+    )
+
+
+
+def _brevat_package() -> ToolPackage:
+    """Brevat — products, supply, sales and the standing offer, for an instance that sells.
+
+    A BUILDER FUNCTION since 2026-10-04, for the reason `_quiar_package` records: the
+    depiction guard resolves `_<package_id>_package` and skipped both of these while they
+    were inline in `catalogue()`.
+
+    ## The generalized lineage, and the specialization discovered by SHAPE
+
+    This is generic Brevat. The farm specialization — **Brevat – Farmers** — is not a
+    second package and not a second hub: a sandbox holding a farm-profile DOCUMENT is a
+    farm, so the hub appends the farm tabs built by the agronomics LIBRARY and titles
+    itself accordingly. Generic Brevat holds no farm geometry, and does not declare any
+    of the farm tools — they are composed, not installed, which is why this package's
+    `tools` tuple names none of them.
+
+    ## Its ONE port is DECLARED and fillable by nothing in this catalogue
+
+    `commerce_offering` is the seam the Offering tab consumes, with the PayPal capture
+    calls named at the grain an operator would withhold. No extension in this catalogue
+    fills it, which `unfillable_ports()` now states out loud rather than leaving an
+    operator to find a Ports row that can never be bound. That is a gap in the EXTENSION
+    catalogue, not decoration in this declaration: the port has a consumer, and the
+    consumer is this app's own tab.
+    """
+    return build_package(
+        # The generalized ERP lineage (TASK-2026-08-14-002 Phase 4). The specialized
+        # package for farm instances — Brevat – Farmers, which absorbs the farm panes
+        # and retires `agronomics` at live parity — is the Farmers phase's, not this
+        # one's: this is generic Brevat, and its ledger tabs render their honest
+        # empty/error states until the modern archetype-row ledger lands (see
+        # `brevat.py`'s header for what Phase 4 verification found).
+        "brevat",
+        # 1.1.0 (2026-09-12): the Stock tab and its `stock_log` document — what came
+        # in and what went out, and the on-hand figure summed from it.
+        version="1.3.0",
+        label="Brevat",
+        summary=(
+            "Products, supply, sales and the standing offer, for an instance that "
+            "sells goods. The commerce seam is DECLARED here and bound — and "
+            "granted — by the operator on Ports, never by installing."
+        ),
+        # The MODERN ledger (Farmers phase): installing provisions invoices/sales/
+        # offering as archetype-row documents the three managers append to. The old
+        # panes stay registered for the lifted farm tabs, outside this package.
+        # `product_catalog` carries the `product_profiles` requirement, so
+        # installing PROVISIONS the document its Products tab appends to.
+        # Without it the tab is a screen that cannot be filled, which is the
+        # state the farm instance was measured in on 2026-09-02.
+        # `stock_log` joins 2026-09-12 (TASK-2026-09-12-001): a package provisions the
+        # documents ITS TOOLS declare, so the Stock tab's log arrives with the app
+        # rather than being minted by the first movement somebody tries to record.
+        tools=("brevat", "product_catalog", "stock_log", "supply_ledger",
+               "sales_ledger", "offer_ledger"),
+        icon="brevat",
+        hub_tool="brevat",
         app_sandbox=AppSandbox(
             namespace="farm",
             why=(
-                "the grantor sandbox's anchor is a farm-template clone and records no "
-                "`copied_from`, so an INHERITED claim would resolve through FND's core "
-                "`system` anchor — the one namespace with no lcl vocabulary. Stated, and "
-                "checked against `field_registry`'s own `grantor: farm` at install"
+                "A goods-selling instance's anchor comes from the farm template "
+                "(`bootstrap_farm_sandbox`), whose numbering carries the fiat/price "
+                "babelette the ledger writes against — installing records that claim "
+                "instead of a hand edit and a deploy."
             ),
-            # The books this app keeps that its own two tools do not require. `credits`
-            # arrives with `credit_ledger`; these three do not, because the tools that
-            # render them belong to brevat — and a package may not claim another lineage's
-            # tool to get at the document it opens on.
+            # The app's own datum-doc default BEYOND what its tools require: the
+            # planting book (supply-backed planting, batch re-point). The planting
+            # tools are the lifted farm tabs — a LIBRARY, not package tools — so
+            # their document cannot ride the tools-derived requirements; this seam
+            # exists for exactly that ("defaults for datum docs").
             documents=(
                 DocumentRequirement(
-                    name="offering", archetype="offer",
-                    why="what each hosted service is priced at, per unit — the price list "
-                        "the operator sets and every charge is drawn from"),
-                DocumentRequirement(
-                    name="sales", archetype="invoice",
-                    why="what each alias was charged: the service, the quantity, the "
-                        "amount and when — the event log the depiction asks for"),
-                DocumentRequirement(
-                    name="invoices", archetype="invoice",
-                    why="what AWS charged FND, residue included. Written by a PROJECTION "
-                        "from the operator tolling ledger, never by hand, so it is "
-                        "provisioned with no writing surface offered"),
+                    name="plantings", archetype="planting",
+                    why="supply batches committed to plots — the planting book "
+                        "add_planting appends to"),
             ),
         ),
+        # The app's ONE port, and the program's first real declaration: the
+        # commerce_offering seam the Offering tab already consumes (catalog +
+        # availability through `_offering`), with the payment egress named at the
+        # grain an operator would withhold. Declared, never bound: filling it with
+        # `DatumOfferingAdapter` (and granting the PayPal calls) is the operator's
+        # decision on Ports.
         port_declarations=(
             PortDeclaration(
                 port_id="commerce_offering",
                 why=(
-                    "charging a client against the payment method they authorised. "
-                    "DECLARED and not bound: vaulting a card means FND can take money "
-                    "without the client present, which is the operator's decision on "
-                    "Ports and nobody else's"
+                    "what this instance offers, published and quotable; payment "
+                    "capture rides PayPal when — and only when — an operator binds "
+                    "and grants it"
                 ),
                 calls=(
                     DeclaredCall(service="paypal", operation="order.create"),
                     DeclaredCall(service="paypal", operation="order.capture"),
                 ),
             ),
-            PortDeclaration(
-                port_id="payment_instrument",
-                why=(
-                    "the card a client put on file at signup: vault it once, describe "
-                    "it to the surfaces that draw it, charge it after the trial, detach "
-                    "it when the client asks. DECLARED and not bound (2026-09-16): no "
-                    "fill exists on this build, so nothing can move money until the "
-                    "operator binds one on Ports — and a fill must be one whose card "
-                    "fields the processor hosts, because no operation here takes a "
-                    "card number"
-                ),
-                # OPERATIONS, not calls, unlike `commerce_offering` above: that port's
-                # grain belongs to PayPal (one-off orders a site takes), while this one
-                # names its own four so an operator can grant `instrument.charge` to
-                # the billing routine alone and withhold it from every surface.
-                operations=("instrument.vault", "instrument.describe",
-                            "instrument.charge", "instrument.detach"),
-            ),
         ),
     )
+
 
 
 def _oveure_package() -> ToolPackage:
@@ -1089,7 +1110,7 @@ def _oveure_package() -> ToolPackage:
 
     from .note_books import OVEURE_PROVIDERS
 
-    return _package(
+    return build_package(
         "oveure",
         # 1.1.0: the sandbox files its documents on a reserved `documents` branch of its
         # own local domain, so a node DENOTES a document by naming its slot rather than by
@@ -1207,7 +1228,7 @@ def _enchir_package() -> ToolPackage:
         OPERATION_PROJECT_EXPORT,
     )
 
-    return _package(
+    return build_package(
         "enchir",
         version="1.2.0",
         label="Enchir",
@@ -1251,7 +1272,86 @@ def packages_by_tool() -> dict[str, ToolPackage]:
     return installable_tools(catalogue())
 
 
+def unfillable_ports(packages: Any = None) -> dict[str, tuple[str, ...]]:
+    """``port_id -> the packages that DECLARE it``, for every port nothing here can FILL.
+
+    THE ROW AN OPERATOR CANNOT BIND. Measured 2026-10-03 (TASK-2026-10-02-002): four
+    declared ports had no eligible extension anywhere in this catalogue —
+    `commerce_offering` (brevat), `payment_instrument` (grantor), `sms_provider` (oveure)
+    and the `openai` half of `ai_provider`, whose only fill is `claude`'s `anthropic`.
+    Each one puts a row on an app's Ports table that can never be bound, and an operator
+    reading that table has no way to tell "nobody has filled this yet" from "you have not
+    bound this yet". The first wants a different extension built; the second wants a
+    click.
+
+    This is deliberately NOT a refusal. Two of the four declarations carry a written
+    reason for being ahead of their fill — oveure's SMS seam is "declared before any use
+    exists so the seam is visible on Ports, never granted by shipping", and brevat's
+    commerce seam has a real consumer in its own Offering tab. Withdrawing a declaration
+    whose consumer exists would hide the gap rather than close it. So the state is
+    MEASURED and said out loud: the Ports surface can mark the row, and a test can pin
+    the set, so a FIFTH one arriving is a decision somebody makes rather than a row that
+    appears.
+
+    An operations-only declaration is counted the same way: `email_provider` is fillable
+    because `fnd_service` fills it, regardless of which operations either names. What a
+    fill PERMITS is the grant's question, not this one.
+    """
+    entries = tuple(packages) if packages is not None else catalogue()
+    filled: set[str] = set()
+    for package in entries:
+        for fill in getattr(package, "port_fills", ()) or ():
+            port_id = getattr(fill, "port_id", "")
+            if port_id:
+                filled.add(port_id)
+    declared: dict[str, list[str]] = {}
+    for package in entries:
+        for declaration in getattr(package, "port_declarations", ()) or ():
+            port_id = getattr(declaration, "port_id", "")
+            if port_id and port_id not in filled:
+                declared.setdefault(port_id, []).append(package.package_id)
+    return {port: tuple(sorted(ids)) for port, ids in sorted(declared.items())}
+
+
+def unfilled_services(packages: Any = None) -> dict[str, tuple[str, ...]]:
+    """``port_id -> the SERVICE tokens declared on it that no fill answers for``.
+
+    The half `unfillable_ports` cannot see. `ai_provider` IS fillable — `claude` fills it
+    — so it is absent from that census, and `oveure` still declares a call against
+    `openai` that nothing in this catalogue can carry. A port filled for one vendor and
+    declared for two is not a bound port; it is a bound port with a dead row inside it,
+    and the operator's grant screen is where that dead row is read as "not permitted yet".
+
+    Only DeclaredCall carries a service; an operations-only declaration names no vendor
+    by design (which extension carries a message is the operator's later choice), so it
+    contributes nothing here.
+    """
+    entries = tuple(packages) if packages is not None else catalogue()
+    served: dict[str, set[str]] = {}
+    for package in entries:
+        for fill in getattr(package, "port_fills", ()) or ():
+            port_id = getattr(fill, "port_id", "")
+            for call in getattr(fill, "calls", ()) or ():
+                service = getattr(call, "service", "")
+                if port_id and service:
+                    served.setdefault(port_id, set()).add(service)
+            service = getattr(fill, "service", "")
+            if port_id and service:
+                served.setdefault(port_id, set()).add(service)
+    gaps: dict[str, set[str]] = {}
+    for package in entries:
+        for declaration in getattr(package, "port_declarations", ()) or ():
+            port_id = getattr(declaration, "port_id", "")
+            for call in getattr(declaration, "calls", ()) or ():
+                service = getattr(call, "service", "")
+                if port_id and service and service not in served.get(port_id, set()):
+                    gaps.setdefault(port_id, set()).add(service)
+    return {port: tuple(sorted(services)) for port, services in sorted(gaps.items())}
+
+
 # The Protocol is runtime_checkable, so this is a real check rather than a comment.
 assert isinstance(LocalPackageSource(), ToolPackageSource)
 
-__all__ = ["LocalPackageSource", "catalogue", "packages_by_tool"]
+__all__ = ["LocalPackageSource", "build_package", "catalogue", "host_packages",
+           "micyte_packages", "packages_by_tool", "register_host_package",
+           "unfillable_ports", "unfilled_services"]

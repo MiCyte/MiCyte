@@ -79,9 +79,17 @@ boundary, enforced by `deploy_sites.sh` in the webapps repo. So the catalogue is
 micyte/tools/_packages.py                     the declaration
   └─ fnd_app/scripts/export_micyte_package_catalog.py   --write
        └─ micyte.com/frontend/assets/micyte-packages.manifest.json
-            └─ gen_marketplace.py            (in the webapps repo)
-                 └─ resources.html                (between GEN markers)
+            ├─ gen_gadgets.py               (in the site repo) → /gadgets, the whole page
+            └─ stamp_release.py             (in the site repo) → the release number and the
+                                              repository URL wherever a page states them
+  └─ fnd_app/scripts/export_micyte_gadget_declarations.py   --write
+       └─ micyte.com/frontend/assets/gadgets/<id>-<version>.micytepkg.json   (the download)
 ```
+
+Until 2026-10-08 a second generator, `gen_marketplace.py`, rendered the same cards into a
+"Marketplace" tab of `/resources`; that tab duplicated `/gadgets` and was retired with the
+generator. `/resources` now carries only the network's tools (the open channel, the
+calendar, the farm-plan calculator).
 
 Nothing about a package is typed twice along that chain: not its name, version,
 summary, tool list, or the number of documents it provisions. Add or retire a package
@@ -124,4 +132,6 @@ webapps repo, not this one — see
 - **Side-loading a package file offline**, and the update contract an offline
   instance would check against. Deliberately not built; see
   [`99-roadmap.md`](99-roadmap.md).
-- **Accounts.** `/login` says so rather than presenting a form that goes nowhere.
+- **Accounts.** `/accounts` on micyte.com says what an account is for and what is built;
+  the host's door (`/__fnd/signup/`) reserves a username and completes nothing until a
+  payment-instrument fill is bound. [`96-accounts-and-hosting.md`](96-accounts-and-hosting.md).

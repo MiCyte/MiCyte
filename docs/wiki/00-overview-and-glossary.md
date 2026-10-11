@@ -7,14 +7,25 @@ mission, maps the as-built layered architecture onto real package paths, indexes
 every other wiki page, defines the shared vocabulary, and records the
 page-template conventions the rest of the wiki follows. Every code reference here
 was read before it was cited; code paths are given as `path:line` and resolve on
-disk. Sibling wiki pages are linked even where they are not yet merged — those
-are intentional forward references.
+disk.
 
 ---
 
 ## 1. Mission
 
-MiCyte Portal (`fnd_app/`) is a hexagonal Python stack that turns a
+**What it is for** (the operator's statement, 2026-10-08): MiCyte was made to provide
+one standard for handling data and developing applications, so that people can organize
+themselves, establish their own precedence, and have a means of technological autonomy —
+to connect without permission. There is a serious lack of autonomy in how people can
+commission or use software without renting the program, and it is sharpest for the
+applications that connect and organize a network of organizations or people. An
+**instance** of the software is the centralizing method of identity: through that
+identity and the network standard, instances and applications developed by anyone and
+hosted by anyone still cooperate with one another. Which parts of that are built today,
+and what an account and a hosted instance are, is
+[`96-accounts-and-hosting.md`](96-accounts-and-hosting.md).
+
+**What it is, as built.** MiCyte Portal (`fnd_app/`) is a hexagonal Python stack that turns a
 single ontological datum-database — the **MOS** (Mycelial Ontological Schema) —
 into a document-processor-style workspace. Datums are addressed
 `<layer>-<value_group>-<iteration>`; primitive "rudi" datums (`0-0-*`) are the
@@ -130,6 +141,7 @@ references are expected).
 - [`92-ports-as-four-layers.md`](92-ports-as-four-layers.md) — TYPE, EXTENSION, BINDING, GRANT — and why the last two are separate writes.
 - [`93-the-marketplace.md`](93-the-marketplace.md) — what a package is, why installing grants nothing, and how micyte.com shows the catalogue without holding a second copy of it.
 - [`95-desktop-app-local-db.md`](95-desktop-app-local-db.md) — desktop app with a local DB.
+- [`96-accounts-and-hosting.md`](96-accounts-and-hosting.md) — what an account is for, what a hosted instance is, who the registrar is, and which of it is built. **design-spec with an as-built ledger.**
 - [`99-roadmap.md`](99-roadmap.md) — sequencing and milestones.
 
 **Pre-existing orientation (already in the repo)**
@@ -281,8 +293,12 @@ overlap, the contract is canonical — this glossary is orientation.
   cooperation convention; the resolve operation is not yet built.
 
 - **msn_registry** — (future) the DNS-like MSS file the FND portal publishes so
-  portals can discover one another's contact cards. Not yet implemented; specified
-  in [`90-network-contract-architecture.md`](90-network-contract-architecture.md).
+  portals can discover one another's contact cards without a contract. Specified in
+  [`90-network-contract-architecture.md`](90-network-contract-architecture.md). What is
+  built: the registrar's `registry` (one card per msn) is kept by **declarations** — an
+  instance signs the card projected from its `msn_profile` and sends it to the registrar
+  (`../contracts/contract_formation.md`, *The declaration*) — and published as the
+  `registry` still at `/__mss/public/stills/registry.mss`.
 
 - **flag** — the mechanism by which a compiled-hyphae match against a registered
   value "raises a flag" that binds a lens or tool. Today binding is approximated by

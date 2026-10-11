@@ -1,10 +1,10 @@
 # State Machine
 
-Authority: [../../../docs/contracts/portal_shell_contract.md](../../../docs/contracts/portal_shell_contract.md)
+Authority: [../../docs/contracts/portal_shell_contract.md](../../docs/contracts/portal_shell_contract.md)
 
 `micyte/state_machine/` owns portal-shell legality, AITAS vocabulary, NIMM directives, and the SYSTEM/tool surface state model.
 
-The retained shell model is summarized in [../../../docs/contracts/portal_shell_contract.md](../../../docs/contracts/portal_shell_contract.md).
+The retained shell model is summarized in [../../docs/contracts/portal_shell_contract.md](../../docs/contracts/portal_shell_contract.md).
 
 Implemented for the MVP so far:
 

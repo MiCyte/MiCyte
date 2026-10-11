@@ -40,7 +40,7 @@ dependencies = ["pyyaml>=6.0", "shapely>=2.0"]
 
 [project.urls]
 Homepage = "https://micyte.com"
-Source = "https://github.com/Fruitful-Network-Development/mycite-core"
+Source = "https://github.com/MiCyte/MiCyte"
 
 [tool.hatch.version]
 path = "micyte/__init__.py"

@@ -42,6 +42,9 @@ class ClientsPane:
 
     tool_id = TOOL_ID
     label = "Clients"
+    #: A WRAPPER, not a tool: `quiar_clients` names nothing in the registry — see
+    #: `_composition`. The form above the table is this module's own, not a second tool.
+    composes: tuple[str, ...] = ("contacts_manager",)
 
     def build_panel_payload(
         self, *, authority_db_file: Path | None, sandbox_id: str, document_id: str,

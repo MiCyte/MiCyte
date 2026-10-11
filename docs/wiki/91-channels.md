@@ -66,9 +66,17 @@ Two things it derives rather than declares, both worth copying:
   about it. Reachability is derived from contracts, never probed — a session builder that
   opened sockets would make rendering a page depend on the network.
 
-**`grantor`** ([`micyte/channels/grantor.py`](../../micyte/channels/grantor.py)) — the
-paid-service surface: which services an alias has, and the key that enables a port. See
-[`92-ports-as-four-layers.md`](92-ports-as-four-layers.md).
+**A HOST'S OWN CHANNELS.** A deployment may register channels of its own through the
+same `register()`, and they are not listed here: a channel serving one host's clients is
+that host's, and naming it on a published page would put one deployment's client
+relationship in MiCyte's own documentation. The shape of such a channel — a paid-service
+surface naming which services an alias has, and the key that enables a port — is what
+[`92-ports-as-four-layers.md`](92-ports-as-four-layers.md) describes as a contract rather
+than as one host's roster.
+
+In THIS repository that channel is `grantor`, and it lives on the host's side
+(`fnd_app/instances/_shared/grantor/channel.py`). It was in `micyte/channels/` until
+2026-10-04, which is why this paragraph used to name it.
 
 ## See also
 

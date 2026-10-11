@@ -33,6 +33,7 @@ the same distinction ``pim_overview`` draws for the mail seam and for the same r
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -55,12 +56,17 @@ PORT_ID = "site_hosting"
 #: sub-tab move the parent's tab too — the collision `agronomics_viewer._hub` avoids by
 #: giving every level its own.
 TAB_QUERY = "design_section"
-DEFAULT_TAB = "articles"
+DEFAULT_TAB = "writing"
 
 #: Which piece the Posts tab has open. Its OWN parameter, for the same reason the tab has
 #: one: a piece stays selected while the reader moves between tabs, and clearing it is how
 #: the gallery comes back.
 PIECE_QUERY = "piece"
+#: Which kept version of the open piece is CHECKED OUT — in the editor, and the one the
+#: block buttons act on. Absent means the current text.
+VERSION_QUERY = "version"
+#: The value of `piece` that opens a blank page: the "+" card.
+NEW_PIECE = "new"
 
 #: The Site tab's own sub-tab parameter — its own, like every nested hub here.
 SITE_QUERY = "site_section"
@@ -153,146 +159,21 @@ def _status(piece: Any) -> str:
 
 
 def _piece_options(pieces: list[Any]) -> list[dict[str, str]]:
-    """Titles to choose from, addresses to send. Nobody should type a slug."""
-    return [{"value": _as_text(getattr(p, "slug", "")),
-             "label": (f"{_as_text(getattr(p, 'title', '')) or _as_text(getattr(p, 'slug', ''))}"
-                       f"{'  ·  draft' if getattr(p, 'hidden', False) else ''}")}
-            for p in pieces]
+    """Titles to choose from, addresses to send. Nobody should type a slug.
 
-
-def _gallery(pieces: list[Any]) -> dict[str, Any]:
-    """The list of everything written, and the way into one of them.
-
-    The `pick` control is what makes this a gallery rather than a printout: a record_table
-    draws every cell as escaped text, so there is no clickable row, and before this the
-    only way to act on a piece was to read its address out of a column and type it into a
-    form underneath. Choosing a title and pressing Open is the same act without the
-    transcription.
+    A DRAFT SAYS HOW OLD IT IS (2026-10-05). One client's send list offered a piece
+    announcing "a tour tomorrow" as a plain draft; it had been written four months earlier.
+    The one fact that would stop a hand is the date — so a draft's option carries it.
     """
-    # NO STATUS COLUMN. The gallery is published pieces only since 2026-08-29, so a
-    # column reading "Published" on every row is a column that says nothing — it was
-    # load-bearing when drafts sat in the same list and stopped being so when they moved.
-    rows = [{
-        "title": _as_text(getattr(piece, "title", "")),
-        "sub-topic": _as_text(getattr(piece, "subtopic", "")),
-        "date": _as_text(getattr(piece, "date", "")),
-        "web address": _as_text(getattr(piece, "url", "")),
-    } for piece in pieces]
-    drafts = sum(1 for p in pieces if getattr(p, "hidden", False))
-    live = len(rows) - drafts
-    return {
-        "schema": _SCHEMA, "container": "record_table", "title": "Your posts",
-        "columns": ["title", "sub-topic", "date", "web address"],
-        "rows": rows, "row_count": len(rows),
-        # The COUNT an author wants: how much is live, and how much is waiting.
-        "count_label": (f"{live} published" + (f" · {drafts} draft" if drafts else "")),
-        # Says DRAFTS, not "Write" — the standalone Write tab folded into Drafts the same
-        # day this gallery split off Pages/Images (2026-08-29), and this string still said
-        # "Write" for a tab that no longer exists until this fix.
-        "empty_text": "Nothing written yet. The Drafts tab is where a first piece starts.",
-        "pick": {
-            "label": "Open a post",
-            "param": PIECE_QUERY,
-            "options": _piece_options(pieces),
-            "go_label": "Open",
-        } if pieces else None,
-    }
-
-
-def _piece_pane(piece: Any, subtopics: tuple[str, ...], *, sandbox: str,
-                sent: dict[str, Any] | None = None) -> dict[str, Any]:
-    """ONE piece, opened: what it says, and the three things that can be done to it.
-
-    Everything here is prefilled from the stored piece, so editing is editing rather than
-    re-entry, and the address is carried in `fixed`/`value` rather than typed. The three
-    acts are separated because they carry different weight — a save is routine, a change
-    of visibility is reversible, and a retire removes the only copy of the words.
-    """
-    slug = _as_text(getattr(piece, "slug", ""))
-    title = _as_text(getattr(piece, "title", "")) or slug
-    hidden = bool(getattr(piece, "hidden", False))
-    vocabulary = ", ".join(subtopics)
-    sent = sent if isinstance(sent, dict) else {}
-    issue = sent.get(slug) or {}
-    was_sent = bool(issue)
-
-    facts = {
-        "schema": _SCHEMA, "container": "record_table", "title": title,
-        "columns": ["fact", "value"],
-        "rows": [
-            {"fact": "status", "value": _status(piece)},
-            {"fact": "sub-topic", "value": _as_text(getattr(piece, "subtopic", ""))},
-            {"fact": "date", "value": _as_text(getattr(piece, "date", ""))},
-            {"fact": "address", "value": slug},
-            {"fact": "web address", "value": _as_text(getattr(piece, "url", "")) or "—"},
-        ],
-        "row_count": 5,
-        "count_label": _status(piece),
-        # The way back to the gallery. Clearing the parameter IS the return.
-        "back": {"label": "All posts", "param": PIECE_QUERY, "value": ""},
-    }
-
-    edit = {
-        "schema": _SCHEMA, "container": "record_form",
-        "title": "Edit this post",
-        "fields": [
-            {"key": "body", "label": (
-                "The writing (Markdown — the first '# ' line is the title)" if not was_sent
-                else "The writing — this went to your list on "
-                     f"{_as_text(issue.get('sent_at'))[:10] or 'an earlier day'}, so saving "
-                     "makes a NEW piece. Give it a different first '# ' line."),
-             "type": "textarea", "value": _body_of(piece)},
-            {"key": "summary", "label": "Summary (one line, shown on the tile)",
-             "value": _summary_of(piece)},
-            {"key": "subtopic", "label": "Sub-topic",
-             "value": _as_text(getattr(piece, "subtopic", "")),
-             "placeholder": vocabulary or "writing"},
-            {"key": "date", "label": "Date", "value": _as_text(getattr(piece, "date", "")),
-             "placeholder": "YYYY-MM-DD"},
-        ],
-        "submit_label": "Save changes" if not was_sent else "Save as a new piece",
-        "submit_action": {
-            "route": f"{_ROUTE}/publish", "sandbox_id": sandbox,
-            "success_label": "Saved",
-            # `prior_slug` is what makes this an EDIT and not a second copy. Changing the
-            # first heading moves the piece's address; naming the old one is how the site
-            # knows to take the old address down instead of leaving both.
-            #
-            # A SENT PIECE IS NOT EDITED, IT IS FORKED (2026-09-14). What went out is in
-            # other people's mail and cannot be changed, so the save must not move or
-            # retire it: `prior_slug` is withheld and `fork_of` names what this came from,
-            # which is what the door refuses on when the title has not moved.
-            "fixed": ({"fork_of": slug, "hidden": True} if was_sent
-                      else {"prior_slug": slug, "hidden": hidden}),
-        },
-    }
-
-    retire = {
-        "schema": _SCHEMA, "container": "record_form",
-        "title": "Delete this post",
-        "fields": [],
-        "submit_label": "Delete permanently",
-        "submit_action": {
-            "route": f"{_ROUTE}/retire", "sandbox_id": sandbox, "danger": True,
-            "success_label": "Deleted", "fixed": {"slug": slug},
-            "confirm": {"expect": "retire", "key": "confirm",
-                        "text": f"This removes “{title}” and the page it is served at. "
-                                "The site holds the only copy of the writing. To keep it "
-                                "but take it off the site, use Publish or unpublish."},
-        },
-    }
-
-    # NEITHER A SEND NOR A VISIBILITY CONTROL HERE ANY MORE (2026-09-14). Both moved to
-    # the tab that is ABOUT them, where the choice is made against a list of what has
-    # already gone out or is already up. This pane offered "send to subscribers" with no
-    # sight of what had been sent, which is how somebody sends a second issue believing it
-    # is the first. An act offered in two places is an act whose two surfaces drift.
-    #
-    # What is left is what belongs to ONE piece and nothing else: what it says, editing it,
-    # and removing it altogether.
-    return {"schema": _SCHEMA, "container": "composite", "direction": "column",
-            "panes": [{"panel_payload": facts}, {"panel_payload": edit},
-                      {"panel_payload": retire}]}
+    out = []
+    for p in pieces:
+        title = _as_text(getattr(p, "title", "")) or _as_text(getattr(p, "slug", ""))
+        suffix = ""
+        if getattr(p, "hidden", False):
+            date = _as_text(getattr(p, "date", ""))[:10]
+            suffix = f"  ·  draft from {date}" if date and not date.startswith("0000") else "  ·  draft"
+        out.append({"value": _as_text(getattr(p, "slug", "")), "label": f"{title}{suffix}"})
+    return out
 
 
 def _chronological(pieces: list[Any], *, key) -> list[Any]:
@@ -353,306 +234,319 @@ def _articles_count(pieces: list[Any], sent: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
-def _start_form(subtopics: tuple[str, ...], *, sandbox: str) -> dict[str, Any]:
-    """Where a new piece begins. ONE outcome — an article artifact, kept off the site.
 
-    The destination select went with the 2026-09-14 split: a piece is written here, then
-    SENT from the Newsletter tab or PUT UP from the Website tab, each against a list of
-    what is already there. Choosing a destination at the moment of writing meant choosing
-    it before there was anything to choose it against — and it meant a first draft could
-    reach 39 people as a side effect of being written down.
-    """
-    return {
-        "schema": _SCHEMA, "container": "record_form",
-        "title": "Write a new piece",
-        "fields": [
-            {"key": "body",
-             "label": "The writing (Markdown — the first '# ' line is the title)",
-             "type": "textarea",
-             "placeholder": "# A Title\n\nThe first paragraph."},
-            {"key": "summary", "label": "Summary (one line, shown on the tile)"},
-            {"key": "subtopic", "label": "Sub-topic",
-             "placeholder": ", ".join(subtopics) or "writing"},
-            {"key": "date", "label": "Date", "placeholder": "YYYY-MM-DD — blank is today"},
-        ],
-        "submit_label": "Save",
-        "submit_action": {"route": f"{_ROUTE}/publish", "sandbox_id": sandbox,
-                          "success_label": "Saved", "fixed": {"visibility": "draft"}},
-    }
+def _version_id_for(body: str) -> str:
+    """Ten hex characters of the body's sha256 — THE SAME FORMULA the host's version store
+    uses (`article_versions.version_id_for`), so a piece the host has not recorded yet
+    shows its current text under the id the host will give it when it does."""
+    return hashlib.sha256(_as_text(body).encode("utf-8")).hexdigest()[:10]
 
 
-def _articles_pane(port: Any, why_not: str, *, sandbox: str, open_slug: str = "",
-                   subscribers: dict[str, Any] | None = None,
-                   sent: dict[str, Any] | None = None,
-                   contacts: dict[str, Any] | None = None) -> dict[str, Any]:
-    """EVERY article artifact, and the place a new one starts.
-
-    The main view, and deliberately the one that hides nothing: a piece is here whether it
-    is on the site, out to the list, both, or neither. The older Posts tab showed published
-    pieces only and the older Drafts tab showed the rest, which meant an author looking for
-    something they had written had to remember which state they left it in.
-
-    The `status` column is load-bearing HERE in a way it was not on the published-only
-    gallery: with everything in one list it is the column that answers what became of each.
-    """
-    if port is None:
-        return _notice("Articles", why_not)
-    try:
-        pieces, subtopics = _pieces(port)
-    except Exception as exc:
-        return _notice("Articles", str(exc))
-    sent = sent if isinstance(sent, dict) else {}
-
-    if open_slug:
-        chosen = next((p for p in pieces
-                       if _as_text(getattr(p, "slug", "")) == open_slug), None)
-        if chosen is not None:
-            return _piece_pane(chosen, subtopics, sandbox=sandbox, sent=sent)
-
-    ordered = _chronological(pieces, key=lambda p: getattr(p, "date", ""))
-    gallery = _cards(
-        ordered, title="Your writing",
-        columns=["title", "status", "sub-topic", "date"],
-        row=lambda p: {
-            "title": _as_text(getattr(p, "title", "")),
-            "status": _piece_status(p, sent),
-            "sub-topic": _as_text(getattr(p, "subtopic", "")),
-            "date": _as_text(getattr(p, "date", "")),
-        },
-        count_label=_articles_count(ordered, sent),
-        empty_text="Nothing written yet. Start one below and it lands here.")
-    return {"schema": _SCHEMA, "container": "composite", "direction": "column",
-            "panes": [{"panel_payload": gallery},
-                      {"panel_payload": _start_form(subtopics, sandbox=sandbox)}]}
+def _pretty_date(value: object) -> str:
+    """``2026-10-05`` as it is; ``2024-00-00`` — the pool's spelling of "2024, month and day
+    unknown" (``0000-00-00`` is undated) — as ``2024``; ``2024-10-00`` as ``2024-10``."""
+    text = _as_text(value)[:10]
+    while text.endswith("-00"):
+        text = text[:-3]
+    return "" if text == "0000" else text
 
 
-def _newsletter_pane(port: Any, why_not: str, *, sandbox: str, open_slug: str = "",
-                     subscribers: dict[str, Any] | None = None,
-                     sent: dict[str, Any] | None = None,
-                     contacts: dict[str, Any] | None = None) -> dict[str, Any]:
-    """What has gone to the list, newest first — and the way to send one more.
+def _first_line(body: str) -> str:
+    for line in str(body or "").splitlines():
+        text = line.strip()
+        if text and not text.startswith("#"):
+            return text
+    return ""
 
-    THE RECORD AND THE ACT ON ONE PAGE. Before this, "what have I sent" lived on a
-    different tab from "send something", and the second had no sight of the first: an
-    author could send a second issue without the first ever being in front of them.
 
-    BUILT FROM THE SENT ISSUES, NOT FROM THE ARTICLES. Every issue this instance has sent
-    is here, including one sent the other way — by mailing `news@<domain>`, which a Lambda
-    captures and dispatches. Such an issue has no article behind it, so a list built by
-    filtering articles would leave the author's own newsletter off their newsletter page.
-    The `on the site` column is the join, read the other way round: it says which of these
-    a reader can also find on the website.
-    """
-    if port is None:
-        return _notice("Newsletter", why_not)
-    try:
-        pieces, _subtopics = _pieces(port)
-    except Exception as exc:
-        return _notice("Newsletter", str(exc))
-    sent = sent if isinstance(sent, dict) else {}
-    facts = subscribers if isinstance(subscribers, dict) else {}
-    count = int(facts.get("count") or 0)
+def _content_of(body: str) -> str:
+    """The writing without its '# Title' line — what the content field holds."""
+    lines = str(body or "").splitlines()
+    if lines and lines[0].lstrip().startswith("# "):
+        lines = lines[1:]
+    return "\n".join(lines).strip("\n")
 
-    by_slug = {_as_text(getattr(p, "slug", "")): p for p in pieces}
-    issues = sorted(sent.items(), key=lambda kv: _as_text(kv[1].get("sent_at")), reverse=True)
-    people = "1 subscriber" if count == 1 else f"{count} subscribers"
-    rows = []
-    for slug, issue in issues:
-        piece = by_slug.get(slug)
-        rows.append({
-            "title": (_as_text(issue.get("subject"))
-                      or _as_text(getattr(piece, "title", "")) or slug),
-            "sent": _as_text(issue.get("sent_at"))[:10],
-            "people": str(issue.get("target_count") or ""),
-            # Three answers, not two. A piece can be on the site, kept off it, or not be
-            # an article at all — and the third is the one an author would otherwise have
-            # no way to notice about their own inbound-sent issue.
-            "on the site": ("yes" if piece is not None and not getattr(piece, "hidden", False)
-                            else "no" if piece is not None else "not an article yet"),
+
+def _versions_of(piece: Any, facts: dict[str, Any]) -> list[dict[str, Any]]:
+    """This piece's kept versions, newest first — or its current text as the one version
+    when the host has not recorded any (a piece written before versions existed)."""
+    slug = _as_text(getattr(piece, "slug", ""))
+    kept = facts.get(slug) if isinstance(facts, dict) else None
+    rows = [dict(v) for v in (kept or {}).get("versions") or [] if isinstance(v, dict)]
+    body = _body_of(piece)
+    if not rows or not any(r.get("head") for r in rows):
+        rows.insert(0, {
+            "id": _version_id_for(body), "saved_at": _as_text(getattr(piece, "date", "")),
+            "title": _as_text(getattr(piece, "title", "")), "hidden": bool(getattr(piece, "hidden", False)),
+            "by": "", "head": True, "on_site": not getattr(piece, "hidden", False),
+            "sent_at": "", "dispatch_id": "", "body": body, "summary": _summary_of(piece),
         })
-    history = {
-        "schema": _SCHEMA, "container": "record_table", "title": "Sent to your list",
-        "columns": ["title", "sent", "people", "on the site"],
-        "rows": rows, "row_count": len(rows),
-        "count_label": f"{len(rows)} sent · {people}",
-        "empty_text": ("Nothing has gone to your list yet. Choose a piece below to send "
-                       "the first one."),
-        "pick": {"label": "Open a sent piece", "param": PIECE_QUERY,
-                 "options": _piece_options([by_slug[s] for s, _ in issues if s in by_slug]),
-                 "go_label": "Open"} if any(s in by_slug for s, _ in issues) else None,
-    }
-    panes = [{"panel_payload": history},
-             {"panel_payload": _send_form(pieces, sent, facts, sandbox=sandbox)}]
-    orphans = [(slug, issue) for slug, issue in issues if slug not in by_slug]
-    if orphans:
-        panes.append({"panel_payload": _post_sent_form(orphans, sandbox=sandbox)})
-    return {"schema": _SCHEMA, "container": "composite", "direction": "column",
-            "panes": panes}
+    return rows
 
 
-def _post_sent_form(orphans: list[Any], *, sandbox: str) -> dict[str, Any]:
-    """Put an issue that is not an article onto the site, as one.
+def _gallery_cards(pieces: list[Any], sent: dict[str, Any]) -> dict[str, Any]:
+    """Everything written, as cards — the "+" first.
 
-    ONLY FOR ISSUES WITH NO ARTICLE. Anything sent from the Articles tab already has one —
-    offering this for those would be offering to make a duplicate of a piece the author
-    can already see. What this is for is an issue mailed to `news@<domain>`, which lives
-    only in the private store and is on nobody's site.
+    Operator, 2026-10-05: *"a simple gallery of articles, where the first gallery card is
+    just a box with a '+' … so either someone can select an existing article to see and
+    edit it, or see prior changes."* The card's picture is the writing's first line; its
+    one meta line says what became of it and when. Issues that reached the list without
+    ever being an article (mailed in to `news@`) are cards too, so nothing the author has
+    sent is missing from their own gallery.
     """
+    ordered = _chronological(pieces, key=lambda p: getattr(p, "date", ""))
+    cards = []
+    for p in ordered:
+        slug = _as_text(getattr(p, "slug", ""))
+        cards.append({
+            "slug": slug,
+            "name": _as_text(getattr(p, "title", "")) or slug,
+            "excerpt": _summary_of(p) or _first_line(_body_of(p)),
+            "meta": " · ".join(x for x in (_piece_status(p, sent), _pretty_date(getattr(p, "date", ""))) if x),
+        })
+    known = {c["slug"] for c in cards}
+    for slug, issue in sorted(sent.items(), key=lambda kv: _as_text(kv[1].get("sent_at")), reverse=True):
+        if slug in known or not isinstance(issue, dict):
+            continue
+        cards.append({
+            "slug": slug, "name": _as_text(issue.get("subject")) or slug,
+            "excerpt": _first_line(str(issue.get("body_text") or "")),
+            "meta": f"sent {_as_text(issue.get('sent_at'))[:10]} · not an article yet",
+        })
     return {
-        "schema": _SCHEMA, "container": "record_form",
-        "title": "Put a sent issue on your website",
-        "fields": [
-            {"key": "slug", "label": "Which issue", "type": "select", "value": "",
-             "options": [{"value": slug,
-                          "label": (_as_text(issue.get("subject")) or slug)}
-                         for slug, issue in orphans]},
-        ],
-        "submit_label": "Put it up",
-        "submit_action": {"route": f"{_ROUTE}/newsletter.post", "sandbox_id": sandbox,
-                          "success_label": "Published"},
+        "schema": _SCHEMA, "container": "project_gallery", "title": "Your writing",
+        "count_label": _articles_count(pieces, sent) if pieces else "",
+        "pick_param": PIECE_QUERY,
+        "new_card": {"label": "New piece", "value": NEW_PIECE},
+        "projects": cards,
+        "empty_text": "Nothing written yet. The + card starts a piece.",
     }
 
 
-def _send_form(pieces: list[Any], sent: dict[str, Any], facts: dict[str, Any], *,
-               sandbox: str) -> dict[str, Any]:
-    """Choose a piece and send it. The count is the label, and at zero there is no button.
+def _new_piece_form(*, sandbox: str) -> dict[str, Any]:
+    """A title and the writing. Nothing else to fill in.
 
-    UNSENT PIECES ONLY in the list. A sent issue is terminal — the adapter refuses a second
-    send of one and says so — so offering it here would be offering an act that can only
-    refuse. Sending "again" is writing a new piece, which is what the Articles tab is for.
+    The date is today, the summary is the first line, the sub-topic is the site's default;
+    the piece is saved as a DRAFT and reaches nobody until an act on its page says so.
     """
-    count = int(facts.get("count") or 0)
-    address = _as_text(facts.get("list_address"))
-    people = "1 person" if count == 1 else f"{count} people"
-    unsent = [p for p in pieces if _as_text(getattr(p, "slug", "")) not in sent]
-    if not count:
-        where = _as_text(facts.get("signup_url"))
-        return _notice(
-            "Send to your list",
-            "Nobody has subscribed yet, so there is nobody to send to. The signup form on "
-            + (where or "your site")
-            + " is live — anyone who fills it in appears here and on Contacts.")
-    if not pieces:
-        # NOT THE SAME AS "all sent". An instance with no writing at all and one whose
-        # every piece has gone out are opposite situations that both leave this list
-        # empty, and the first needs to be told to write something rather than that
-        # everything is done.
-        return _notice(
-            "Send to your list",
-            f"You have {people} waiting, and nothing written yet. Write a piece on the "
-            "Articles tab and it can go out from here.")
-    if not unsent:
-        return _notice(
-            "Send to your list",
-            "Every piece you have written has already gone out. A sent issue is final; "
-            "write a new piece on the Articles tab to send another.")
-    return {
-        "schema": _SCHEMA, "container": "record_form",
-        "title": "Send to your list",
-        "fields": [
-            {"key": "slug", "label": "Which piece", "type": "select", "value": "",
-             "options": _piece_options(
-                 _chronological(unsent, key=lambda p: getattr(p, "date", "")))},
+    return {"schema": _SCHEMA, "container": "composite", "direction": "column", "panes": [
+        {"panel_payload": {
+            "schema": _SCHEMA, "container": "record_table", "title": "New piece",
+            "columns": ["note"], "rows": [], "row_count": 0, "count_label": "",
+            "empty_text": "Write it, save it, and it appears in your gallery as a draft.",
+            "back": {"label": "All writing", "param": PIECE_QUERY, "value": ""}}},
+        {"panel_payload": {
+            "schema": _SCHEMA, "container": "record_form", "title": "",
+            "fields": [
+                {"key": "title", "label": "Title", "placeholder": "A title", "wide": True, "prose": True},
+                {"key": "content", "label": "The writing", "type": "textarea", "prose": True,
+                 "placeholder": "The first paragraph."},
+            ],
+            "submit_label": "Save",
+            "submit_action": {"route": f"{_ROUTE}/publish", "sandbox_id": sandbox, "icon": "complete",
+                              "success_label": "Saved", "fixed": {"visibility": "draft"}},
+        }},
+    ]}
+
+
+def _issue_page(slug: str, issue: dict[str, Any], *, sandbox: str) -> dict[str, Any]:
+    """An issue that reached the list without ever being an article: its text, and the one
+    act that brings it across — putting it on the site as a piece."""
+    text = str(issue.get("body_text") or "")
+    return {"schema": _SCHEMA, "container": "composite", "direction": "column", "panes": [
+        {"panel_payload": {
+            "schema": _SCHEMA, "container": "record_table",
+            "title": _as_text(issue.get("subject")) or slug,
+            "columns": ["fact", "value"],
+            "rows": [{"fact": "sent", "value": _as_text(issue.get("sent_at"))[:10]},
+                     {"fact": "reached", "value": str(issue.get("target_count") or "")},
+                     {"fact": "on the site", "value": "not yet — it was mailed in, never written here"}],
+            "row_count": 3, "count_label": "sent to your list",
+            "back": {"label": "All writing", "param": PIECE_QUERY, "value": ""},
+            "detail_key": "details", "detail_label": "text", "detail_prose": True,
+            "extra_tables": [],
+        }},
+        {"panel_payload": {
+            "schema": _SCHEMA, "container": "record_table", "title": "What went out",
+            "columns": ["the text"], "rows": [{"the text": text, "details": {"text": text}}],
+            "row_count": 1, "count_label": "", "detail_key": "details", "detail_label": "full text", "detail_prose": True}},
+        {"panel_payload": {
+            "schema": _SCHEMA, "container": "record_form", "title": "Post blog",
+            "fields": [], "submit_label": "Post blog", "submit_note": "on your site, as an article",
+            "submit_action": {"route": f"{_ROUTE}/newsletter.post", "sandbox_id": sandbox, "icon": "webpage",
+                              "success_label": "Posted", "fixed": {"slug": slug}}}},
+    ]}
+
+
+def _article_page(piece: Any, *, sandbox: str, sent: dict[str, Any], subscribers: dict[str, Any],
+                  versions: list[dict[str, Any]], checked_out: str) -> dict[str, Any]:
+    """ONE piece: its versions, the one checked out, and the block buttons that use it.
+
+    Operator: *"on an article someone can select from block buttons like 'send emailer' or
+    'post blog' where a specific version is used. The workflow that would follow is like a
+    'check out' almost. Giving a preview of the version being used."*
+
+    The checked-out version is in the EDITOR — that is the preview, and it is also what
+    Save keeps — and every action below is fixed to its id, so what the button says it
+    will use is what the door receives. Picking another version in the table checks it out.
+    """
+    slug = _as_text(getattr(piece, "slug", ""))
+    title = _as_text(getattr(piece, "title", "")) or slug
+    hidden = bool(getattr(piece, "hidden", False))
+    issue = sent.get(slug) if isinstance(sent, dict) else None
+    was_sent = isinstance(issue, dict) and bool(issue)
+    head = next((v for v in versions if v.get("head")), versions[0] if versions else {})
+    current = next((v for v in versions if _as_text(v.get("id")) == checked_out), None) or head
+    vid = _as_text(current.get("id"))
+    is_head = _as_text(head.get("id")) == vid
+    when = _as_text(current.get("saved_at"))[:16].replace("T", " ")
+    count = int((subscribers or {}).get("count") or 0)
+    people = "1 person" if count == 1 else f"{count:,} people"
+    address = _as_text((subscribers or {}).get("list_address"))
+
+    facts = {
+        "schema": _SCHEMA, "container": "record_table", "title": title,
+        "columns": ["fact", "value"],
+        "rows": [
+            {"fact": "status", "value": _piece_status(piece, sent)},
+            {"fact": "date", "value": _pretty_date(getattr(piece, "date", ""))},
+            {"fact": "web address", "value": _as_text(getattr(piece, "url", "")) or "—"},
+            {"fact": "checked out", "value": (f"version {vid} · saved {when}" + ("" if is_head else "  (not the current text)")) if vid else "the current text"},
         ],
-        "submit_label": f"Send to {people}",
+        "row_count": 4, "count_label": _piece_status(piece, sent),
+        "back": {"label": "All writing", "param": PIECE_QUERY, "value": ""},
+    }
+    editor = {
+        "schema": _SCHEMA, "container": "record_form",
+        "title": "Edit" if not was_sent else "Edit — saving makes a new piece",
+        "fields": [
+            {"key": "title", "label": "Title", "value": _as_text(current.get("title")) or title,
+             "wide": True, "prose": True},
+            {"key": "content", "label": "The writing", "type": "textarea", "prose": True,
+             "value": _content_of(str(current.get("body") or _body_of(piece)))},
+        ],
+        "submit_label": "Save" if not was_sent else "Save as a new piece",
         "submit_action": {
-            "route": f"{_ROUTE}/article.send", "sandbox_id": sandbox, "danger": True,
-            "success_label": "Sent",
-            "confirm": {"expect": "send", "key": "confirm",
-                        "text": (f"This sends the piece to {people}"
-                                 + (f" from {address}" if address else "")
-                                 + ". A published page can be taken back down; mail "
-                                   "cannot. Type send to confirm.")},
+            "route": f"{_ROUTE}/publish", "sandbox_id": sandbox, "success_label": "Saved",
+            "icon": "add" if was_sent else "complete",
+            # A SENT PIECE IS FORKED, NOT EDITED: what went out is in other people's mail.
+            "fixed": ({"fork_of": slug, "visibility": "draft"} if was_sent
+                      else {"prior_slug": slug, "visibility": "draft" if hidden else "public"}),
         },
     }
+    rows = []
+    for v in versions:
+        marks = []
+        if v.get("head"):
+            marks.append("current")
+        if v.get("on_site"):
+            marks.append("on the site")
+        if _as_text(v.get("sent_at")):
+            marks.append(f"sent {_as_text(v.get('sent_at'))[:10]}")
+        if _as_text(v.get("id")) == vid:
+            marks.append("checked out")
+        rows.append({
+            "version": _as_text(v.get("id")),
+            "saved": _as_text(v.get("saved_at"))[:16].replace("T", " "),
+            "title": _as_text(v.get("title")),
+            "status": " · ".join(marks) or "kept",
+            "details": {"text": str(v.get("body") or "")},
+        })
+    table = {
+        "schema": _SCHEMA, "container": "record_table", "title": "Versions",
+        "columns": ["version", "saved", "title", "status"],
+        "rows": rows, "row_count": len(rows),
+        "count_label": f"{len(rows)} kept · checked out: {vid}" if vid else f"{len(rows)} kept",
+        "detail_key": "details", "detail_label": "text", "detail_prose": True,
+        "empty_text": "No versions are kept yet; the first save records one.",
+        "pick": {"label": "Check out a version", "param": VERSION_QUERY,
+                 "options": [{"value": _as_text(v.get("id")),
+                              "label": f"{_as_text(v.get('saved_at'))[:16].replace('T', ' ')} · {_as_text(v.get('title'))}"
+                                       + ("  (current)" if v.get("head") else "")}
+                             for v in versions],
+                 "go_label": "Check out"} if len(versions) > 1 else None,
+    }
+    actions: list[dict[str, Any]] = []
+    if count:
+        actions.append({
+            "schema": _SCHEMA, "container": "record_form", "title": "Send emailer",
+            "fields": [], "submit_label": "Send emailer", "submit_note": f"to {people}",
+            "submit_action": {
+                "route": f"{_ROUTE}/article.send", "sandbox_id": sandbox, "danger": True, "icon": "mail",
+                "success_label": "Sent", "fixed": {"slug": slug, "version": vid},
+                "confirm": {"expect": "send", "key": "confirm",
+                            "text": (f"Sends version {vid} (saved {when}) of “{title}” to {people}"
+                                     + (f" from {address}" if address else "")
+                                     + ". Mail cannot be taken back. Type send to confirm.")}},
+        })
+    else:
+        actions.append(_notice("Send emailer",
+                               "Nobody has subscribed yet, so there is nobody to send to. "
+                               "Anyone who fills in the signup form on your site appears on Contacts."))
+    if current.get("on_site") and is_head:
+        actions.append({
+            "schema": _SCHEMA, "container": "record_form", "title": "Take off the site",
+            "fields": [], "submit_label": "Take off the site", "submit_note": "it stays here as a draft",
+            "submit_action": {"route": f"{_ROUTE}/visibility", "sandbox_id": sandbox, "icon": "archive", "quiet": True,
+                              "success_label": "Taken off", "fixed": {"slug": slug, "visibility": "draft"}}})
+    else:
+        actions.append({
+            "schema": _SCHEMA, "container": "record_form", "title": "Post blog",
+            "fields": [], "submit_label": "Post blog", "submit_note": "this version, on your site",
+            "submit_action": {"route": f"{_ROUTE}/publish", "sandbox_id": sandbox, "success_label": "Posted", "icon": "webpage",
+                              # This version's text becomes the current one, on the site.
+                              "fixed": {"slug": slug, "version": vid, "prior_slug": slug,
+                                        "visibility": "public"}}})
+    if hidden and not was_sent:
+        actions.append({
+            "schema": _SCHEMA, "container": "record_form", "title": "Delete this draft",
+            "fields": [], "submit_label": "Delete this draft", "submit_note": "and every kept version of it",
+            "submit_action": {"route": f"{_ROUTE}/retire", "sandbox_id": sandbox, "danger": True, "icon": "trash",
+                              "success_label": "Deleted", "fixed": {"slug": slug},
+                              "confirm": {"expect": "retire", "key": "confirm",
+                                          "text": f"This removes “{title}” and every kept version of it. Type retire to confirm."}}})
+    blocks = {"schema": _SCHEMA, "container": "composite", "direction": "row", "wrap": True,
+              "panes": [{"panel_payload": a} for a in actions]}
+    return {"schema": _SCHEMA, "container": "composite", "direction": "column",
+            "panes": [{"panel_payload": facts}, {"panel_payload": editor},
+                      {"panel_payload": table}, {"panel_payload": blocks}]}
 
 
-def _website_pane(port: Any, why_not: str, *, sandbox: str, open_slug: str = "",
+def _writing_pane(port: Any, why_not: str, *, sandbox: str, open_slug: str = "",
                   subscribers: dict[str, Any] | None = None,
                   sent: dict[str, Any] | None = None,
-                  contacts: dict[str, Any] | None = None) -> dict[str, Any]:
-    """What the site is carrying, newest first — and the way to take one off it.
-
-    "Remove from showing up on the website to be consumed" is the operator's phrase, and it
-    is exactly `hidden`: the writing is kept, the page stops being served. It is NOT a
-    retire, which removes the only copy of the words — that stays on the piece's own view,
-    behind a typed confirmation, where it cannot be reached by picking from a list.
-    """
+                  contacts: dict[str, Any] | None = None,
+                  versions: dict[str, Any] | None = None,
+                  version: str = "") -> dict[str, Any]:
+    """The gallery; or the "+" page; or one piece with its versions and its block buttons."""
     if port is None:
-        return _notice("Website", why_not)
+        return _notice("Writing", why_not)
     try:
         pieces, _subtopics = _pieces(port)
     except Exception as exc:
-        return _notice("Website", str(exc))
-    live = [p for p in pieces if not getattr(p, "hidden", False)]
-    ordered = _chronological(live, key=lambda p: getattr(p, "date", ""))
-    listing = _cards(
-        ordered, title="On your website",
-        columns=["title", "date", "web address"],
-        row=lambda p: {
-            "title": _as_text(getattr(p, "title", "")),
-            "date": _as_text(getattr(p, "date", "")),
-            "web address": _as_text(getattr(p, "url", "")) or "—",
-        },
-        count_label=f"{len(ordered)} on the site",
-        empty_text=("Nothing is on your website yet. Anything you have written can be put "
-                    "up from here."))
-    panes = [{"panel_payload": listing}]
-    for form in (_shelve_form(ordered, sandbox=sandbox),
-                 _put_up_form([p for p in pieces if getattr(p, "hidden", False)],
-                              sandbox=sandbox)):
-        if form is not None:
-            panes.append({"panel_payload": form})
-    return {"schema": _SCHEMA, "container": "composite", "direction": "column",
-            "panes": panes}
-
-
-def _shelve_form(live: list[Any], *, sandbox: str) -> dict[str, Any] | None:
-    """Take a piece off the site without losing it. ``None`` when nothing is up."""
-    if not live:
-        return None
-    return {
-        "schema": _SCHEMA, "container": "record_form",
-        "title": "Take one off the website",
-        "fields": [
-            {"key": "slug", "label": "Which piece", "type": "select", "value": "",
-             "options": _piece_options(live)},
-        ],
-        "submit_label": "Take it off",
-        "submit_action": {
-            "route": f"{_ROUTE}/visibility", "sandbox_id": sandbox,
-            "success_label": "Taken off",
-            # THE WRITING IS KEPT. `visibility` republishes the piece from its stored text
-            # with `hidden` set, so this is undone by the form below it — which is the
-            # whole difference between this and the delete on a piece's own view.
-            "fixed": {"visibility": "draft"},
-        },
-    }
-
-
-def _put_up_form(shelved: list[Any], *, sandbox: str) -> dict[str, Any] | None:
-    """Put a piece that is not on the site onto it. ``None`` when everything already is."""
-    if not shelved:
-        return None
-    return {
-        "schema": _SCHEMA, "container": "record_form",
-        "title": "Put one on the website",
-        "fields": [
-            {"key": "slug", "label": "Which piece", "type": "select", "value": "",
-             "options": _piece_options(
-                 _chronological(shelved, key=lambda p: getattr(p, "date", "")))},
-        ],
-        "submit_label": "Put it up",
-        "submit_action": {"route": f"{_ROUTE}/visibility", "sandbox_id": sandbox,
-                          "success_label": "Published",
-                          "fixed": {"visibility": "public"}},
-    }
+        return _notice("Writing", str(exc))
+    sent = sent if isinstance(sent, dict) else {}
+    if open_slug == NEW_PIECE:
+        return _new_piece_form(sandbox=sandbox)
+    if open_slug:
+        chosen = next((p for p in pieces if _as_text(getattr(p, "slug", "")) == open_slug), None)
+        if chosen is not None:
+            return _article_page(chosen, sandbox=sandbox, sent=sent,
+                                 subscribers=subscribers if isinstance(subscribers, dict) else {},
+                                 versions=_versions_of(chosen, versions if isinstance(versions, dict) else {}),
+                                 checked_out=_as_text(version))
+        issue = sent.get(open_slug)
+        if isinstance(issue, dict) and issue:
+            return _issue_page(open_slug, issue, sandbox=sandbox)
+    return _gallery_cards(pieces, sent)
 
 
 def _contacts_pane(port: Any, why_not: str, *, sandbox: str, open_slug: str = "",
                    subscribers: dict[str, Any] | None = None,
                    sent: dict[str, Any] | None = None,
-                   contacts: dict[str, Any] | None = None) -> dict[str, Any]:
+                   contacts: dict[str, Any] | None = None,
+                   versions: dict[str, Any] | None = None,
+                   version: str = "") -> dict[str, Any]:
     """Who signed up to this site's list, who left it, and who never joined.
 
     Operator, 2026-09-14: *"Each of these sites should keep a contact datum doc they can
@@ -690,7 +584,7 @@ def _contacts_pane(port: Any, why_not: str, *, sandbox: str, open_slug: str = ""
     import re-adding somebody who asked to be taken off — and a client is entitled to see
     that the link in their own newsletter worked.
     """
-    del port, why_not, sandbox, open_slug, subscribers, sent
+    del port, why_not, sandbox, open_slug, subscribers, sent, versions, version
     facts = contacts
     # ABSENT IS NOT EMPTY. A host that sent no `contacts` fact at all is an instance with
     # no site connection — there is no domain to key a roster by, so there is no roster.
@@ -703,8 +597,7 @@ def _contacts_pane(port: Any, why_not: str, *, sandbox: str, open_slug: str = ""
     live = int(facts.get("subscribed") or 0)
     gone = int(facts.get("unsubscribed") or 0)
     never = int(facts.get("never_subscribed") or 0)
-    total = int(facts.get("total") or len(rows))
-    people = "1 subscriber" if live == 1 else f"{live} subscribers"
+    people = "1 subscriber" if live == 1 else f"{live:,} subscribers"
     # EACH GROUP IS NAMED ONLY WHEN IT EXISTS. A label reading "· 0 unsubscribed" invites
     # the reader to wonder what it is warning them about; an absent clause says nothing,
     # which is the true thing to say about an empty group.
@@ -714,19 +607,35 @@ def _contacts_pane(port: Any, why_not: str, *, sandbox: str, open_slug: str = ""
     if never:
         parts.append(f"{never} not on the list")
     count_label = " · ".join(parts)
-    # THE CAP IS SAID OUT LOUD. TFF's roster is 1,194 rows; the payload carries 200 of
-    # them and the counts beside it are the FULL ones. A table that silently shows a
-    # prefix while its own label reports the whole is the defect this sentence removes.
+    # THE CAP IS SAID OUT LOUD, and since 2026-10-05 it never falls on a subscriber.
+    # Operator: "show all the subscribers". The host sends every row on the list and
+    # every row that left, and caps only the people nobody asked (TFF: 1,169 imported
+    # names); the notice says exactly which group was cut and by how much, and the counts
+    # beside it are the FULL ones. A table that silently shows a prefix while its own
+    # label reports the whole is the defect this sentence removes.
     notice = ""
     if facts.get("truncated"):
-        notice = (f"Showing the first {len(rows)} of {total}. The people on your list come "
-                  "first, then anyone who has unsubscribed.")
+        shown_never = int(facts.get("shown_never") or max(len(rows) - live - gone, 0))
+        who = f"Everyone on your list is shown ({live})"
+        if gone:
+            who += f", and everyone who has left ({gone})"
+        notice = (f"{who}. Of the {never} not on the list, the first {shown_never} "
+                  "are shown.")
     return {
         "schema": _SCHEMA,
         "container": "record_table",
         "title": "Contacts",
         "count_label": count_label if rows else "",
-        "columns": ["email", "name", "phone", "zip", "status", "when", "how"],
+        # FIVE CELLS IDENTIFY AND PLACE A PERSON; the rest of what the roster recorded is
+        # behind the toggle in the last cell (2026-10-05). `detail_key` names the field
+        # the host filled per row — `instance_account._recipient_details` — and the
+        # shared record_table draws the Show/Hide and the hidden row. Phone and zip were
+        # columns until this change; a page of 231 phone numbers is not what a client
+        # scans for, and "see the recipient info and toggle on that information per
+        # entry" is what they asked for.
+        "columns": ["email", "name", "status", "when", "how"],
+        "detail_key": "details",
+        "detail_label": "info",
         "rows": rows,
         "row_count": len(rows),
         "notice": notice,
@@ -782,7 +691,7 @@ def _text_edit_form(options: list[dict[str, str]], *, sandbox: str) -> dict[str,
         ],
         "submit_label": "Change the page",
         "submit_action": {
-            "route": f"{_ROUTE}/{OPERATION_CONTENT_REPLACE}", "sandbox_id": sandbox,
+            "route": f"{_ROUTE}/{OPERATION_CONTENT_REPLACE}", "sandbox_id": sandbox, "icon": "edit",
             "success_label": "Changed",
         },
     }
@@ -838,7 +747,7 @@ def _image_swap_form(options: list[dict[str, str]], refs: list[dict[str, str]], 
         ],
         "submit_label": "Swap it",
         "submit_action": {
-            "route": f"{_ROUTE}/{OPERATION_ASSET_SWAP}", "sandbox_id": sandbox,
+            "route": f"{_ROUTE}/{OPERATION_ASSET_SWAP}", "sandbox_id": sandbox, "icon": "gallery",
             "success_label": "Swapped",
             # WHICH GALLERY THE TARGET MUST BE IN — the one this form's own options came
             # from. Sent rather than left to the route's default, which is `image`: an
@@ -868,12 +777,13 @@ def _image_upload_form(*, sandbox: str) -> dict[str, Any]:
         "fields": [
             {"key": "name", "label": "Call it", "value": "",
              "placeholder": "letters, digits, - and _ (no dots, no slashes)"},
-            {"key": "data", "label": "The picture, as a data: URL", "type": "textarea",
-             "placeholder": "data:image/png;base64,iVBORw0KGgo…"},
+            # A FILE from the disk (2026-10-07) — the shell reads it into the data: URL this
+            # route accepts, and fills the name from the file. Nobody pastes base64.
+            {"key": "data", "label": "The picture", "type": "file", "accept": "image/*"},
         ],
         "submit_label": "Add it",
         "submit_action": {
-            "route": f"{_ROUTE}/{OPERATION_ASSET_UPLOAD}", "sandbox_id": sandbox,
+            "route": f"{_ROUTE}/{OPERATION_ASSET_UPLOAD}", "sandbox_id": sandbox, "icon": "add",
             "success_label": "Added",
         },
     }
@@ -1066,6 +976,36 @@ def _images_pane(port: Any, why_not: str, *, sandbox: str = "") -> dict[str, Any
             "panes": panes}
 
 
+def _subscription_form(*, sandbox: str) -> dict[str, Any]:
+    """One reader on or off the list, by hand — typed, because it is a decision about a
+    person. A new reader joins through the signup form; this changes someone already here."""
+    return {
+        "schema": _SCHEMA, "container": "record_form", "title": "Change someone's subscription",
+        "fields": [
+            {"key": "email", "label": "Their email", "placeholder": "reader@example.org"},
+            {"key": "subscribed", "label": "Put them", "type": "select", "value": "on",
+             "options": [{"value": "on", "label": "on the list"}, {"value": "off", "label": "off the list"}]},
+        ],
+        "submit_label": "Change",
+        "submit_action": {"route": f"{_ROUTE}/contact.set_subscription", "sandbox_id": sandbox,
+                          "success_label": "Changed", "icon": "profile",
+                          "confirm": {"expect": "change", "key": "confirm",
+                                      "text": "This changes whether one person receives your "
+                                              "newsletter. Type change to confirm."}},
+    }
+
+
+def _contacts_view(port: Any, why_not: str, *, sandbox: str, **facts: Any) -> dict[str, Any]:
+    """The roster, and the one act on it. Carries the roster pane's `configured`/`why_not`
+    so the hub reads the same answer it always did."""
+    table = _contacts_pane(port, why_not, sandbox=sandbox, **facts)
+    if not table.get("configured"):
+        return table
+    return {"schema": _SCHEMA, "container": "composite", "direction": "column",
+            "configured": True, "why_not": "",
+            "panes": [{"panel_payload": table}, {"panel_payload": _subscription_form(sandbox=sandbox)}]}
+
+
 #: ``(tab id, label, builder)``. Writing first: it is the one that does something.
 #: TWO, on the operator's instruction (2026-08-29): "it should only be the gallery and
 #: the draft sub tabs". Pages and Images were never authoring — they are what the site is
@@ -1080,23 +1020,15 @@ def _images_pane(port: Any, why_not: str, *, sandbox: str = "") -> dict[str, Any
 #: signature (`port, why_not, *, sandbox, open_slug`) and differ only in which one runs —
 #: designed that way so the loop needs no per-tab branch.
 TABS: tuple[tuple[str, str, Callable[..., dict[str, Any]]], ...] = (
-    # THREE VIEWS OF ONE ARTICLE (2026-09-14), not three kinds of thing. A piece of writing
-    # is an article artifact; the other two tabs answer "which of these went to the list"
-    # and "which of these is on the site", and each offers the one act that is about it.
-    #
-    # `posts`/`drafts` were the older split and it cut the wrong way: it separated pieces
-    # by whether they were finished, so an author looking for something they wrote had to
-    # remember which state they had left it in. These separate by DESTINATION, which is
-    # what the author was choosing between in the first place.
-    ("articles", "Articles", _articles_pane),
-    ("newsletter", "Newsletter", _newsletter_pane),
-    ("website", "Website", _website_pane),
-    # THE FOURTH VIEW (2026-09-15), at the operator's instruction. Last, because it is WHO
-    # the first three are addressed to — and beside them rather than a tab away, so the
-    # number on the send form and the table it counts are on one screen. It arrived from
-    # PIM's top level; `pim_overview`'s `contacts` feature id is RETIRED, not moved, for
-    # the reason written beside it there.
-    ("contacts", "Contacts", _contacts_pane),
+    # TWO VIEWS (2026-10-06), on the operator's instruction: "a simple gallery of articles"
+    # with a "+" card first, and one page per piece carrying its versions and the block
+    # buttons that act on exactly one of them. Articles / Newsletter / Website were three
+    # views of one article cut by destination (2026-09-14); the destination is now a button
+    # on the piece's own page, chosen with the version in sight.
+    ("writing", "Writing", _writing_pane),
+    # WHO the writing is addressed to, beside it. Reads the roster the writers keep and —
+    # since 2026-10-06 — offers the one act on it: a reader on or off, by hand.
+    ("contacts", "Contacts", _contacts_view),
 )
 
 
@@ -1281,29 +1213,35 @@ class PimDesign:
         # view is entirely made of, and it carries its own `why_not` — so a missing one is
         # "no site connection" and an empty one is "nobody yet", which are opposite news.
         contacts = facts.get("contacts")
+        versions = facts.get("versions")
+        version = _as_text(query.get(VERSION_QUERY))
         panes = [
             {"id": tab_id, "label": label, "tool_id": f"pim_design_{tab_id}",
              "panel_payload": builder(port, why_not, sandbox=sandbox, open_slug=open_slug,
                                       subscribers=subscribers, sent=sent,
-                                      contacts=contacts)}
+                                      contacts=contacts, versions=versions, version=version)}
             for tab_id, label, builder in TABS
         ]
         active = _as_text(query.get(TAB_QUERY)) or DEFAULT_TAB
         # Links to the tabs this hub used to carry. `site` merged into `pages`, then
         # `pages` and `images` moved to the Site tab, `writing` folded into Drafts, and on
-        # 2026-09-14 Posts/Drafts became Articles/Newsletter/Website. A saved link should
-        # open the nearest thing that still exists rather than falling to the default and
-        # looking like it worked — `posts` was "what is published", which is now Website;
-        # `drafts` was "everything else, and where a new one starts", which is Articles.
-        active = {"site": "website", "pages": "website", "images": "website",
-                  "posts": "website", "writing": "articles",
-                  "drafts": "articles"}.get(active, active)
+        # 2026-09-14 Posts/Drafts became Articles/Newsletter/Website, which on 2026-10-06
+        # became ONE gallery of writing. A saved link should open the nearest thing that
+        # still exists rather than falling to the default and looking like it worked;
+        # today every one of these words means the gallery.
+        active = {"site": "writing", "pages": "writing", "images": "writing",
+                  "posts": "writing", "drafts": "writing", "articles": "writing",
+                  "newsletter": "writing", "website": "writing"}.get(active, active)
         if active not in [pane["id"] for pane in panes]:
             active = DEFAULT_TAB
         return {
             "schema": _SCHEMA,
             "container": "tabbed",
-            "title": "Design",
+            # "Authoring", the word on the tab that opens this (FEATURES: `design` is
+            # LABELLED Authoring since 9b2b83ea). Until 2026-10-05 this said "Design" —
+            # the hub's old name — so a client clicked Authoring and landed on a pane
+            # calling itself Design, one tab left of the pane that IS Design.
+            "title": "Authoring",
             "sandbox_id": sandbox,
             "active_tab": active,
             "tab_query_param": TAB_QUERY,
@@ -1313,5 +1251,5 @@ class PimDesign:
 
 register(PimDesign())
 
-__all__ = ["DEFAULT_TAB", "PIECE_QUERY", "PORT_ID", "SITE_QUERY", "TABS",
-           "TAB_QUERY", "PimDesign", "build_site_payload", "site_port"]
+__all__ = ["DEFAULT_TAB", "NEW_PIECE", "PIECE_QUERY", "PORT_ID", "SITE_QUERY", "TABS",
+           "TAB_QUERY", "VERSION_QUERY", "PimDesign", "build_site_payload", "site_port"]

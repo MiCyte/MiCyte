@@ -23,12 +23,22 @@ exclusive with them, and declares no routes and no writes.
 
 ## The alias document
 
-`lv.<member_msn>.system.<channel>-<host_msn>.<hash>` — minted header-first by
-`fnd_app/scripts/seed_channel_alias_documents.py`; reference rows are the network
-program's later work. A declared-empty alias is a real answer: the profile page's alias
-gallery is a data fact, not a hardcode. The pairing rule per channel: a roster keyed by
-INSTANCE msn pairs directly; the grantor's roster keys the client's GRANTEE msn, and an
-instance msn is not a grantee msn — a client has two addresses.
+`lv.<member_msn>.system.<channel>-<host_msn>.<hash>`, minted header-first. A
+declared-empty alias is a real answer: the profile page's alias gallery is a data fact,
+not a hardcode.
+
+**The pairing rule is the channel's, and a channel must state which it takes.** A roster
+keyed by INSTANCE msn pairs directly. A roster keyed by some OTHER address of the same
+party does not, and resolving it is a join the channel owns — which is the load-bearing
+case, because a party may hold more than one address in this stack and the two are not
+the same number.
+
+> **Where the mechanics are.** Minting the documents, and the join a specific channel's
+> roster needs, are a HOST's business: a host knows its own parties and what it calls
+> them. This page is the INTERFACE — what an alias document is, what the postures mean,
+> and what a channel may and may not do. A deployment's own channels, its minting script
+> and its roster join live on that deployment's side (in this repository,
+> `fnd_app/`), and `docs/contracts/` carries the contract rather than the roster.
 
 ## Postures
 
@@ -44,6 +54,13 @@ instance msn is not a grantee msn — a client has two addresses.
 
 ## Implementations
 
-`micyte/channels/agnet.py` (the network's own channel), `micyte/channels/grantor.py`
-(FND's grantor channel: per-grantee service rows, admin/grantee postures, the key block),
-`micyte/channels/convention.py` (the cooperation convention the two share).
+`micyte/channels/agnet.py` (the network's own channel) and
+`micyte/channels/convention.py` (the cooperation convention). Both are MiCyte's, and both
+are registered by importing `micyte.channels`.
+
+A DEPLOYMENT may register channels of its own through the same `register()`, and they are
+not listed here: a channel serving one host's clients is that host's, and naming it on
+this page would put one deployment's client relationship in the published contract. In
+this repository that channel is in `fnd_app/instances/_shared/grantor/channel.py`, which
+says at length why it is there and not in `micyte/channels/` (it was, until
+2026-10-04).

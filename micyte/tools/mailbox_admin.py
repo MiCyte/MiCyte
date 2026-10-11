@@ -312,7 +312,7 @@ def _address_forms(row: dict[str, str], *, domain: str,
                     "value": forwards}],
         "submit_label": "Change forwarding (sends no email)",
         "submit_action": {
-            "route": f"{ROUTE}/{ACTION_FORWARDING}", "sandbox_id": sandbox,
+            "route": f"{ROUTE}/{ACTION_FORWARDING}", "sandbox_id": sandbox, "icon": "link",
             "success_label": "Changed", "danger": True, "fixed": dict(fixed),
             "confirm": {
                 "expect": address, "key": "confirm",
@@ -333,7 +333,7 @@ def _address_forms(row: dict[str, str], *, domain: str,
         # could mean a status check; this one cannot be misread.
         "submit_label": f"SEND AN EMAIL to {recipient}",
         "submit_action": {
-            "route": f"{ROUTE}/{ACTION_VERIFY_REQUEST}", "sandbox_id": sandbox,
+            "route": f"{ROUTE}/{ACTION_VERIFY_REQUEST}", "sandbox_id": sandbox, "icon": "mail",
             "success_label": "Sent", "fixed": dict(fixed),
             "confirm": {
                 "expect": address, "key": "confirm",
@@ -352,7 +352,7 @@ def _address_forms(row: dict[str, str], *, domain: str,
         "fields": [],
         "submit_label": f"SEND A SECOND EMAIL to {recipient}",
         "submit_action": {
-            "route": f"{ROUTE}/{ACTION_REMIND}", "sandbox_id": sandbox,
+            "route": f"{ROUTE}/{ACTION_REMIND}", "sandbox_id": sandbox, "icon": "reload",
             "success_label": "Sent", "fixed": dict(fixed),
             "confirm": {
                 "expect": address, "key": "confirm",

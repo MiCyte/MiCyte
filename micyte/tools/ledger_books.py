@@ -299,9 +299,11 @@ def subscription_rows(document: Any, *, sandbox: str, archetype: Any,
 
     The twin-key rule again: `party` / `service_node` hold the stored addresses the edit
     selects write back, `party_label` / `service` hold what a human reads. No price and no
-    unit: both are the OFFER's, and :func:`micyte.tools.grantor_books.subscription_ledger`
-    is where the two are joined. A row that carried its own copy would be a price nothing
-    updates when the price list does.
+    unit: both are the OFFER's, and the JOIN of the two is the reader's, not this row's.
+    A row that carried its own copy would be a price nothing updates when the price list
+    does. (That reader is a host application's; this module does not name it, because a
+    published package naming one deployment's application is the mixing the repo split
+    exists to prevent.)
     """
     rows: list[dict[str, Any]] = []
     for row in getattr(document, "rows", ()) or ():
@@ -504,8 +506,9 @@ class CreditLedger(_LedgerBase):
     The third direction, and the one the operator's no-negative rule needs. A free trial,
     a goodwill adjustment or a refund is recorded here at a POSITIVE amount; the charge
     stays in `sales` at full price. Nothing is stored below zero and the balance is
-    `sales - credits`, computed by :func:`micyte.tools.grantor_books.account_statement`
-    where it is shown.
+    `sales - credits`, computed by whatever reader SHOWS the balance rather than stored
+    anywhere. (On this deployment that reader is a host application's; this module does
+    not name it — see `SubscriptionBook` above for why.)
 
     Same archetype as the other two on purpose — the mint's no-two-archetypes-per-shape
     check would refuse a twin, and the DOCUMENT is what carries direction. That precedent

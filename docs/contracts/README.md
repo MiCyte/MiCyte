@@ -27,12 +27,16 @@ and each says so at the top; neither describes a region you can compose today.
 - [contract_formation.md](contract_formation.md) — how two instances form a contract
 - [hosted_alias_interface.md](hosted_alias_interface.md) — a channel's two halves and their postures
 - [port_binding_store.md](port_binding_store.md) — the shape of `private/config.json`, validated
+- [registrar_residency.md](registrar_residency.md) — where the registrar's documents live
+- [tool_package_update_contract.md](tool_package_update_contract.md) — the pull-only catalogue every instance holds with FND
 
 ## Addressing, Naming, and Authority
 
 - [datum_document_naming_taxonomy.md](datum_document_naming_taxonomy.md)
 - [mos_authority_enforcement.md](mos_authority_enforcement.md)
 - [mos_database_schema_addendum.md](mos_database_schema_addendum.md)
+- [msn_profile_and_contact_card/README.md](msn_profile_and_contact_card/README.md) — an instance's profile and its registry card
+- [product_profile_denotation.md](product_profile_denotation.md) — how a product profile denotes what it is
 
 ## Structural and Mutation Contracts
 

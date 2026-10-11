@@ -162,6 +162,12 @@ OPERATION_PROFILE_EDIT = "profile.edit"
 #: (TASK-2026-09-11-001 P2, docs/wiki/44-project-documents.md). Its own permission because
 #: it lands files (the view, pictures the pool lacks) AND rewrites a profile.
 OPERATION_PROJECT_EXPORT = "project.export"
+#: Put one reader on, or take one off, this site's newsletter list by hand (2026-10-06).
+#: A client's Contacts view showed who signed up and who left and offered no act on
+#: either; a reader who asks the farm in person to be added or removed had to wait for
+#: the operator. The write goes through the newsletter runtime's one subscription writer,
+#: so a toggle from PIM and a click on an unsubscribe link leave the same shape behind.
+OPERATION_CONTACT_SET_SUBSCRIPTION = "contact.set_subscription"
 
 #: The served tree on this host, written in place — what a direct adapter binds.
 SERVICE_LOCAL_TREE = "local_tree"
@@ -574,6 +580,15 @@ class SiteHostingPort(SiteAuthoringPort, Protocol):
         :data:`OPERATION_PROJECT_EXPORT`."""
         ...
 
+    def set_subscription(self, *, site: str = "", email: str, subscribed: bool) -> dict[str, Any]:
+        """Authorized under :data:`OPERATION_CONTACT_SET_SUBSCRIPTION` — and under nothing else.
+
+        ``subscribed=True`` puts the reader on the list (clearing a prior opt-out and its
+        stamp); ``False`` takes them off as a decision about this person. Refuses when no
+        contact on this site's roster has that address: a toggle is not a signup.
+        """
+        ...
+
 
 __all__ = [
     "OPERATION_ARTICLE_PUBLISH",
@@ -581,6 +596,7 @@ __all__ = [
     "OPERATION_ARTICLE_SEND",
     "OPERATION_ASSET_SWAP",
     "OPERATION_ASSET_UPLOAD",
+    "OPERATION_CONTACT_SET_SUBSCRIPTION",
     "OPERATION_CONTENT_REPLACE",
     "OPERATION_PAGE_LIST",
     "OPERATION_PROFILE_EDIT",

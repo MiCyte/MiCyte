@@ -1,9 +1,14 @@
 """What a PAYMENT INSTRUMENT is, on this side of the processor — the rule, with no I/O.
 
-The operator's ask (2026-09-16): the grantor sandbox keeps the grantee's card "in the
-grantee datum docs … handled via hash datum entries as I want to make sure that I am being
-responsible in how it is stored." The responsible half of that sentence is kept here and
-the mechanism is changed, for a reason that is arithmetic rather than caution.
+Asked for on 2026-09-16 as: keep a client's card "in the … datum docs … handled via hash
+datum entries as I want to make sure that I am being responsible in how it is stored." The
+responsible half of that sentence is kept here and the mechanism is changed, for a reason
+that is arithmetic rather than caution.
+
+This module is the RULE and it names no host. Which instance bills whom, and what the two
+parties are called there, is an application's business — on this deployment it is in
+`fnd_app/instances/_shared/grantor/`. The rule below holds for any instance that charges
+a card, which is why it is here and that is not (TASK-2026-10-02-002 P4).
 
 ## Why no hash of a card number is stored, anywhere, by anything that imports this
 
@@ -18,15 +23,16 @@ blob, and into every backup of it, on every unrelated write forever.
 
 What makes recurring billing possible is not the number. It is a **processor vault
 reference**: the card goes into fields the processor hosts, the processor hands back an
-opaque token, and FND charges the token. FND never sees, transmits or stores a PAN, which
-is also what keeps FND on PCI SAQ-A rather than SAQ-D.
+opaque token, and the biller charges the token. An instance that follows this rule never
+sees, transmits or stores a PAN, which is also what keeps it on PCI SAQ-A rather than
+SAQ-D.
 
 ## Record vs instrument — the split ``keypass`` already codifies
 
     the RECORD     -- brand, last four, expiry, STATE, when it arrived: the recogniser
-                   -- MOS, ``grantor.grantee-<msn>``, the row a client and the operator read
+                   -- MOS: an append-path document per alias, the row both parties read
     the INSTRUMENT -- the vault reference, the processor, the environment
-                   -- an instance FILE, 0600, never MOS (``grantor_instruments``)
+                   -- an instance FILE, 0600, never MOS
 
 This module is the RULE both halves obey. It knows no store, no file, no processor and no
 surface. What it does know is what a recogniser is, which states an instrument can be in,
@@ -51,10 +57,11 @@ from datetime import date, timedelta
 
 #: A card is on file and may be charged.
 STATE_PRESENT = "present"
-#: No card is on file. The seven grantees onboarded before 2026-09-16 are here, and it is
-#: a STATED state — a row that says so — not a missing row. An instrument row nobody wrote
-#: and an instrument nobody holds look identical, and the pre-existing population is
-#: exactly what would make "no row" the normal case and hide a real gap on a new account.
+#: No card is on file. A STATED state — a row that says so — not a missing row. An
+#: instrument row nobody wrote and an instrument nobody holds look identical, and on any
+#: instance with accounts that predate its billing, the pre-existing population is exactly
+#: what makes "no row" the normal case and hides a real gap on a new account. (Measured
+#: when this was written: seven such accounts.)
 STATE_ABSENT = "absent"
 #: The card on file has passed its expiry month. Derived from the record, never written by
 #: a person: see :func:`effective_state`.
@@ -164,8 +171,8 @@ class InstrumentRecord:
 
     Never the number, never a hash of it, never the vault reference. ``arrived_at`` is the
     day the instrument was recorded (a HOPS day in the datum row, ISO here), which is what
-    tells two records for one alias apart — the LATEST wins, since the grantee document is
-    an append-path document and a replaced card is a new row.
+    tells two records for one alias apart — the LATEST wins, since the record lives in an
+    append-path document and a replaced card is a new row.
     """
 
     alias: str

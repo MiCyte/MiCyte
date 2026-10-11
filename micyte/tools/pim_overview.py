@@ -30,6 +30,7 @@ configured", which is the distinction this whole panel exists to draw.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,17 @@ TAB_QUERY = "pim_tab"
 #: codebase gets one; sharing the parent's moves the parent when a sub-tab
 #: is picked.
 ANALYTICS_QUERY = "analytics_section"
+
+#: WHICH MONTH the strip has selected. Its own key for the same reason the sub-tab has
+#: one: a period is picked from inside a sub-tab, and spending `ANALYTICS_QUERY` on it
+#: would throw the reader back to Overview the moment they chose a month to look at.
+ANALYTICS_PERIOD = "analytics_period"
+
+#: The trailing window the rollup reader is ASKED for. Nothing offers another yet, which
+#: is exactly why the label under "How people arrived" is NOT written from this number —
+#: it is read back off the rollup's own `period` block. See `_window_label`.
+SUMMARY_WINDOW_DAYS = 90
+
 DEFAULT_TAB = "home"
 
 #: Where the Resources tab's arrangement forms post — the door as it is registered, and the
@@ -91,6 +103,45 @@ _RESOURCES_ROUTE = "/__fnd/pim/resources"
 # describe an unconnected seam two different ways.
 
 
+def _last_send_sentence(last: dict[str, Any]) -> str:
+    """"last send 7 Oct: 1,191 of 1,191 sent" — from the ledger's counts, nothing per reader."""
+    if not isinstance(last, dict) or not _as_text(last.get("dispatch_id")):
+        return ""
+    when = _as_text(last.get("requested_at"))[:10]
+    try:
+        import datetime as _dt
+        when = _dt.date.fromisoformat(when).strftime("%-d %b")
+    except ValueError:
+        pass
+    sent, target = int(last.get("sent_count") or 0), int(last.get("target_count") or 0)
+    tail = " · still sending" if _as_text(last.get("status")) == "queued" else ""
+    return f"last send {when}: {sent:,} of {target:,} sent{tail}"
+
+
+def _last_send_notice(last: dict[str, Any]) -> str:
+    """What the last send did NOT do, said plainly, or nothing when it reached everyone."""
+    if not isinstance(last, dict) or not _as_text(last.get("dispatch_id")):
+        return ""
+    parts = []
+    for key, word in (("failed_count", "failed"), ("uncertain_count", "uncertain"),
+                      ("bounced_count", "bounced"), ("complained_count", "marked it as spam")):
+        n = int(last.get(key) or 0)
+        if n:
+            parts.append(f"{n:,} {word}")
+    if not parts:
+        return ""
+    sentence = f"The last send, \"{_as_text(last.get('subject'))[:60]}\": {', '.join(parts)}."
+    if int(last.get("uncertain_count") or 0):
+        sentence += (" Uncertain means a send was claimed and never confirmed; nobody is sent twice by a "
+                     "guess, and those readers can be re-queued deliberately.")
+    if int(last.get("bounced_count") or 0) or int(last.get("complained_count") or 0):
+        sentence += " Bounced and complaining readers have come off the list."
+    names = [_as_text(r.get("email")) for r in (last.get("not_sent") or [])][:8]
+    if names:
+        sentence += " Not reached: " + ", ".join(names) + ("…" if len(last.get("not_sent") or []) > 8 else "") + "."
+    return sentence
+
+
 def _as_text(value: object) -> str:
     return "" if value is None else str(value).strip()
 
@@ -110,7 +161,7 @@ def _config(private_dir: Any) -> dict[str, Any]:
 
 def seam_state(
     config: dict[str, Any], *, port_id: str = "email_provider", sandbox: str = "",
-    bindings: list[dict[str, Any]] | None = None,
+    msn_id: str = "", bindings: list[dict[str, Any]] | None = None,
 ) -> dict[str, str]:
     """Declared / bound / permitted, as three separate answers, FOR THIS SANDBOX.
 
@@ -129,12 +180,13 @@ def seam_state(
     A binding names the sandboxes it acts for. One that does not name yours is not
     yours, and that is the question asked here.
 
-    What this still cannot fix, because the data cannot answer it: `sandbox_ids` holds
-    NAMES, and a name is not an address — `oveure` is a sandbox two instances hold. So a
-    binding for one instance's `oveure` would still match the other's. The pair
-    `(msn, sandbox)` is the address everywhere else in this stack and `port_bindings`
-    was never migrated to it. Recorded rather than papered over: narrowing by name is
-    strictly better than not narrowing, and it is not the whole fence.
+    ``sandbox_ids`` holds NAMES, and a name is not an address — `oveure` is a sandbox two
+    instances hold. The pair `(msn, sandbox)` is the address everywhere else in this
+    stack, and since 2026-08-27 every binding carries its `msn_id`; since 2026-10-01 this
+    reader asks by the pair (TASK-2026-09-30-001): a binding is ours when its `msn_id`
+    is ours AND it names our sandbox. A sandbox named with no instance binds NOTHING —
+    that lookup is the name-only read this function existed to narrow, and answering it
+    "yes" would be the other client's binding on our tab again.
 
     ``next_step`` IS THE CLIENT'S SENTENCE, and only the client's. PIM has exactly one
     reader for this dict: `_seam_pane`, which feeds the Analytics and Email tabs a CLIENT
@@ -162,14 +214,18 @@ def seam_state(
         bindings = config.get("port_bindings")
         bindings = bindings if isinstance(bindings, list) else []
     wanted = _as_text(sandbox)
+    owner = _as_text(msn_id)
 
     def _acts_for(binding: dict[str, Any]) -> bool:
         if prenarrowed:
-            # The host already narrowed to the PAIR, and its rows carry no `sandbox_ids`
-            # to re-filter on. Asked as a flag rather than sniffed for the missing key:
-            # a config binding that names NO sandboxes is NOBODY'S, and a key-sniff read
-            # those two states as the same one.
+            # The host narrowed these by the pair already (`_bindings_for_instance`).
             return True
+        if not wanted and not owner:
+            return True
+        if not owner:
+            return False
+        if _as_text(binding.get("msn_id")) != owner:
+            return False
         if not wanted:
             return True
         ids = binding.get("sandbox_ids")
@@ -430,6 +486,10 @@ def plan_of(context: dict[str, Any]) -> dict[str, Any]:
         "trial": account.get("trial") if isinstance(account.get("trial"), dict) else {},
         "instrument": (account.get("instrument")
                        if isinstance(account.get("instrument"), dict) else {}),
+        # The tier and the upgrade line are two more facts off the same account; the
+        # four-key shape above is what every older caller reads and it is unchanged.
+        "tier": _as_text(account.get("tier")),
+        "upgrade": account.get("upgrade") if isinstance(account.get("upgrade"), dict) else {},
     }
 
 
@@ -462,6 +522,35 @@ def _month_label(period: object, *, long: bool = False) -> str:
     except (ValueError, IndexError):
         return token
     return f"{name} {year}" if long else name
+
+
+def _window_label(live: dict[str, Any]) -> str:
+    """The span the rollup ACTUALLY covered, said as dates, read off the rollup.
+
+    "How people arrived" carried the fixed string "last 90 days", which was true only
+    because nothing in the tab could change the window — a label restating a constant is
+    a claim the code does not own, and it would have gone on reading "last 90 days" the
+    day the host asked for a different span.
+
+    `build_analytics_summary` writes `period.start`/`period.end` from the dates it summed,
+    so that block is the one reader of what was covered. Returns "" when the rollup names
+    no period, because saying nothing is the only honest thing left to say then.
+    """
+    period = live.get("period") if isinstance(live.get("period"), dict) else {}
+    start, end = _as_text(period.get("start")), _as_text(period.get("end"))
+    if not (start and end):
+        return ""
+    try:
+        first, last = date.fromisoformat(start), date.fromisoformat(end)
+    except ValueError:
+        # A period the builder wrote in some other shape. Shown AS ITSELF rather than
+        # dropped: a reader can still check it against the figures.
+        return f"{start} to {end}"
+    # The year is said once when both ends share it: "1 Jun to 29 Aug 2026" is the same
+    # fact as repeating 2026, with one less thing to read.
+    head = (f"{first.day} {_MONTHS[first.month - 1]}" if first.year == last.year
+            else f"{first.day} {_MONTHS[first.month - 1]} {first.year}")
+    return f"{head} to {last.day} {_MONTHS[last.month - 1]} {last.year}"
 
 
 def _seconds(ms: object) -> str:
@@ -507,6 +596,13 @@ class PimOverview:
     wants_surface_query = True
     #: `private_dir` and the port the Design tab is a view of — see build_panel_payload.
     wants_host_context = True
+    #: The one registered tool this hub composes: the Authoring/Design tabs are
+    #: `pim_design`'s payload. Every other tab in `_TABS` is a pane this module builds
+    #: itself, and a hub does not compose itself. Typed rather than derived because
+    #: `_TABS` is a table of tab DECLARATIONS gated by what the sandbox holds, not of
+    #: tool factories — `test_tool_registry_shape` proves the entry by finding the class
+    #: instantiated here.
+    composes: tuple[str, ...] = ("pim_design",)
 
     # ---- the panes -------------------------------------------------------------
     #
@@ -531,8 +627,27 @@ class PimOverview:
         facts = plan_of(context)
         plan, balance, trial, instrument = (
             facts["plan"], facts["balance"], facts["trial"], facts["instrument"])
+        free = facts.get("tier") == "free"
+        upgrade = facts.get("upgrade") or {}
         rows: list[dict[str, str]] = []
-        if plan:
+        if free:
+            # THE FREE ACCOUNT (operator, 2026-10-09): an instance with the free allowance
+            # and no card. What it includes is said here, and the upgrade is the next row,
+            # priced from the offering — a number this pane did not type.
+            included = _as_text(plan.get("included"))
+            rows.append({"item": "plan",
+                         "detail": (f"Free account — {included} of records included; no card needed"
+                                    if included else "Free account — no card needed")})
+            if upgrade:
+                price = " ".join(p for p in (_as_text(upgrade.get("price")),
+                                             _as_text(upgrade.get("unit"))) if p)
+                rows.append({"item": "upgrade",
+                             "detail": (f"A base account is {price}: "
+                                        f"{_as_text(upgrade.get('included'))}, a website, "
+                                        "mail and the other services, charged to a card on file."
+                                        if price else "A base account: more storage, a website, "
+                                        "mail and the other services. Ask below.")})
+        elif plan:
             rows.append({"item": "plan",
                          "detail": f"Base account, {_as_text(plan.get('monthly'))} a month"
                          if _as_text(plan.get("monthly")) else "Base account"})
@@ -563,9 +678,44 @@ class PimOverview:
             "rows": rows,
             "row_count": len(rows),
             "empty_text": why_not or "Nothing is recorded against this account yet.",
-            "notice": ("Nothing is charged while a trial is running. After it ends, each "
-                       "month is charged to the card on file."
-                       if trial and trial.get("active") else ""),
+            "notice": ("Nothing is charged on a free account. Upgrade when you want more "
+                       "storage or a website; the request goes to FND and your plan changes "
+                       "when a card is on file."
+                       if free else
+                       ("Nothing is charged while a trial is running. After it ends, each "
+                        "month is charged to the card on file."
+                        if trial and trial.get("active") else "")),
+        }
+
+    def _upgrade_pane(self, context: dict[str, Any]) -> dict[str, Any]:
+        """The one action a free account has on Home: ask for the base account.
+
+        A form with no fields, because there is nothing to type — the account is known
+        from the sign-in, and the price is the offering's. It FILES a request; the operator
+        applies it (the books are the operator's), and the sentence says so.
+        """
+        upgrade = plan_of(context).get("upgrade") or {}
+        price = " ".join(p for p in (_as_text(upgrade.get("price")),
+                                     _as_text(upgrade.get("unit"))) if p)
+        # THE ROUTE IS THE HOST'S TO NAME. A published app posting to one deployment's
+        # prefix works on exactly one deployment (the boundary ratchet's own words), so the
+        # host hands the door in through `host_context["routes"]` — `instance_account`'s
+        # precedent — and this pane types no prefix of its own.
+        routes = context.get("routes") if isinstance(context.get("routes"), dict) else {}
+        return {
+            "schema": _SCHEMA,
+            "container": "record_form",
+            "title": "Upgrade to a base account",
+            "count_label": price,
+            "fields": [],
+            "submit_label": "Request the upgrade",
+            "submit_action": {
+                "route": _as_text(routes.get("account_upgrade")),
+                "success_label": "Requested",
+            },
+            "notice": ("We confirm the upgrade by email and ask for a card; your plan "
+                       "changes when the first month is recorded. Nothing is charged "
+                       "before that."),
         }
 
     def _services_pane(self, context: dict[str, Any]) -> dict[str, Any]:
@@ -611,6 +761,10 @@ class PimOverview:
             "row_count": len(rows),
             "empty_text": "This instance keeps no documents yet.",
             "notice": (
+                "A free account includes the records shown and no website files. Past the "
+                "allowance a write is refused with a sentence that says so; upgrade from "
+                "Your plan on Home to raise it."
+                if _as_text(used.get("tier")) == "free" else
                 "Website files and records are both included in your plan at the amounts "
                 "shown. Nothing is charged for storage below those, and we would talk to "
                 "you long before you reached them."
@@ -667,6 +821,13 @@ class PimOverview:
         thing a proprietor actually wants to know. It is also the period control, so the
         chart and the navigator are one object rather than a chart plus a dropdown.
 
+        THE PERIOD IS RESOLVED HERE, once, and handed down. It was described as a control
+        from the day it shipped and was not one: the strip carried no `param`, so the
+        renderer drew the columns as buttons that called nothing, and `_visitor_log` asked
+        for `""` — the latest month — however the reader clicked. A picture of a navigator.
+        Resolving it in this one place is what keeps the strip's lit column, the flagged
+        row in Months and the month the log reads from being three separate answers.
+
         Then, in order of how often the question is asked: where they came from, what they
         read, and who they were. The donuts the operator asked for are kept and DEMOTED to
         the last row — a part-to-whole with three slices reads fine as a ring, and five
@@ -684,7 +845,7 @@ class PimOverview:
         live: dict[str, Any] = {}
         if callable(reader):
             try:
-                got = reader(90)
+                got = reader(SUMMARY_WINDOW_DAYS)
                 live = got if isinstance(got, dict) else {}
             except Exception:
                 live = {}
@@ -705,13 +866,31 @@ class PimOverview:
                     pass
             return pane
 
+        # WHICH MONTH, resolved once. The months the strip draws are the months a reader
+        # can click, so they are also the only periods a link may name: anything else is a
+        # month that has gone, and falling back silently would show the latest under a
+        # heading the reader did not ask for. Same shape as `_posts_pane`'s stale slug —
+        # give them the nearest thing that exists AND say why.
+        periods = sorted({_as_text(m.get("period")) for m in months
+                          if _as_text(m.get("period"))})
+        asked = _as_text((query or {}).get(ANALYTICS_PERIOD))
+        selected = asked if asked in periods else (periods[-1] if periods else "")
+        stale = ""
+        if asked and asked not in periods:
+            stale = f"No figures are kept for {_month_label(asked, long=True)}."
+            if selected:
+                stale += (" It may be older than this site's records, or its month has "
+                          f"since been folded away. Showing "
+                          f"{_month_label(selected, long=True)} instead.")
+
         campaigns = (context or {}).get("campaigns")
         campaigns = campaigns if isinstance(campaigns, dict) else {}
         campaign_rows = [c for c in (campaigns.get("campaigns") or [])
                          if isinstance(c, dict)]
 
         panes: list[dict[str, Any]] = [
-            {"panel_payload": self._month_strip(months)},
+            {"panel_payload": self._month_strip(months, selected=selected,
+                                                stale_note=stale)},
             {"panel_payload": self._arrivals_chart(live)},
             {"panel_payload": self._reading_chart(live)},
         ]
@@ -730,9 +909,10 @@ class PimOverview:
              "panel_payload": {"schema": _SCHEMA, "container": "composite",
                                "direction": "column", "panes": panes}},
             {"id": "months", "label": "Months", "tool_id": "pim_analytics_months",
-             "panel_payload": self._months_table(months)},
+             "panel_payload": self._months_table(months, selected=selected)},
             {"id": "visitors", "label": "Visitors", "tool_id": "pim_analytics_visitors",
-             "panel_payload": self._visitor_log(context)},
+             "panel_payload": self._visitor_log(context, period=selected,
+                                                stale_note=stale)},
             {"id": "campaigns", "label": "Campaigns", "tool_id": "pim_analytics_campaigns",
              "panel_payload": self._campaigns_table(campaign_rows)},
         ]
@@ -747,14 +927,28 @@ class PimOverview:
             "tabs": subtabs,
         }
 
-    def _month_strip(self, months: list[dict[str, Any]]) -> dict[str, Any]:
-        """THE SIGNATURE. Every month this site has, as columns on one scale.
+    def _month_strip(self, months: list[dict[str, Any]], *, selected: str = "",
+                     stale_note: str = "") -> dict[str, Any]:
+        """THE SIGNATURE. Every month this site has, as columns on one scale — and the
+        control that picks one.
 
         One scale across all of them, deliberately: normalising each column to its own
         height would draw a forty-visitor month exactly like a four-hundred-visitor one
         and answer nothing. The bot share is drawn INSIDE each column rather than beside
         it, because it is part of the same traffic and a second column would read as twice
         the month.
+
+        `param` IS THE CONTROL. The chart renderer's `series` branch emits
+        `data-chart-pick`/`data-chart-value` and binds a `setSurfaceQuery` click — but
+        only for a payload that names a param, and this one named none. Every column drew
+        as a `<button>` with an `aria-current` on the active one and did nothing at all
+        when pressed: a picture of a navigator, and the most convincing kind, because it
+        looks pressable.
+
+        `selected` is resolved by `_analytics_pane` and taken as given here. Re-checking it
+        against `series` would make this a second reader of "which months exist", and the
+        two would disagree the first time either changed; an empty `selected` falls to the
+        latest, which is what a tab opened with no period in the address is showing.
         """
         ordered = sorted(months, key=lambda m: _as_text(m.get("period")))
         series = [{
@@ -772,22 +966,33 @@ class PimOverview:
             move = (f"up {delta} on {prior_name}" if delta > 0
                     else f"down {abs(delta)} on {prior_name}" if delta < 0
                     else f"level with {prior_name}")
+        # The bot-share sentence explains a mark the reader can see; a stale-period notice
+        # explains why the tab is not showing what their link asked for, and that is the
+        # more urgent of the two. Joined rather than replaced — the chart draws one `note`.
+        note = ("The shaded foot of each column is automated traffic — search crawlers "
+                "and the like — which is counted separately from people.")
         return {
             "schema": _SCHEMA, "container": "chart", "mode": "series",
             "title": "People, month by month",
             "count_label": move,
             "series": series,
-            "active": latest.get("key", ""),
-            "note": ("The shaded foot of each column is automated traffic — search "
-                     "crawlers and the like — which is counted separately from people."),
+            "param": ANALYTICS_PERIOD,
+            "active": selected or latest.get("key", ""),
+            "note": f"{stale_note} {note}" if stale_note else note,
             "empty_text": "No months recorded yet.",
         }
 
     def _arrivals_chart(self, live: dict[str, Any]) -> dict[str, Any]:
-        """Where the last ninety days of sessions came from, as one proportion bar.
+        """Where a window of sessions came from, as one proportion bar.
 
         One bar rather than a ring: these are parts of a single whole and the reader wants
         the SHARES, which a common baseline gives away for free.
+
+        THE WINDOW IS NAMED BY THE ROLLUP, not by this file. Both strings here read "the
+        last 90 days", and that was true only because nothing could ask for anything else
+        — a sentence that is accidentally true is a sentence that will be wrong later. The
+        header now carries whatever `_window_label` reads off the rollup, and the empty
+        state claims no window at all, so neither can outlive the number it describes.
         """
         widgets = live.get("widgets") if isinstance(live.get("widgets"), dict) else {}
         series = [{"key": _pretty(s.get("key")), "count": _int(s.get("count"))}
@@ -795,9 +1000,9 @@ class PimOverview:
                   if isinstance(s, dict)]
         return {
             "schema": _SCHEMA, "container": "chart", "mode": "split",
-            "title": "How people arrived", "count_label": "last 90 days",
+            "title": "How people arrived", "count_label": _window_label(live),
             "series": series,
-            "empty_text": "No arrivals recorded in the last 90 days.",
+            "empty_text": "No arrivals recorded in this window.",
         }
 
     def _reading_chart(self, live: dict[str, Any]) -> dict[str, Any]:
@@ -958,36 +1163,55 @@ class PimOverview:
             ],
         }
 
-    def _months_table(self, months: list[dict[str, Any]]) -> dict[str, Any]:
-        """The figures behind the strip. A chart that cannot be checked is a claim."""
+    def _months_table(self, months: list[dict[str, Any]], *,
+                      selected: str = "") -> dict[str, Any]:
+        """The figures behind the strip. A chart that cannot be checked is a claim.
+
+        The selected month is FLAGGED here so the strip's lit column and this table say
+        the same thing — a period control that changes nothing a reader can see on the
+        next tab is indistinguishable from one that did not fire.
+        """
         rows = [{
             "period": _as_text(m.get("period")),
             "people": _as_text(m.get("visitors")),
             "visits": _as_text(m.get("sessions")),
             "page views": _as_text(m.get("views")),
             "automated": _as_text(m.get("bots")),
+            # NOT a column, deliberately: `record_table` draws only the keys `columns`
+            # names and flags a row on `row_class_key` being truthy, so this marks the row
+            # without adding a cell reading "yes" that says nothing the highlight does not.
+            "selected": "yes" if selected and _as_text(m.get("period")) == selected else "",
         } for m in sorted(months, key=lambda m: _as_text(m.get("period")), reverse=True)]
         return {
             "schema": _SCHEMA, "container": "record_table", "title": "Months",
             "columns": ["period", "people", "visits", "page views", "automated"],
             "rows": rows, "row_count": len(rows),
+            "row_class_key": "selected",
             "count_label": f"{len(rows)} month(s)",
-            "note": "The numbers the chart is drawn from.",
+            "note": ("The numbers the chart is drawn from"
+                     + (f" — {_month_label(selected, long=True)} is the month the strip "
+                        "has selected." if selected else ".")),
             "empty_text": "No months recorded yet.",
         }
 
-    def _visitor_log(self, context: dict[str, Any] | None) -> dict[str, Any]:
-        """WHO CAME. The log the legacy dashboard called Visitor records.
+    def _visitor_log(self, context: dict[str, Any] | None, *, period: str = "",
+                     stale_note: str = "") -> dict[str, Any]:
+        """WHO CAME, for the month the strip has selected.
 
         One row per person for a month, with when they first and last appeared, how many
         visits they made and how they arrived. It is the thing a proprietor reads when a
         number surprises them, and PIM had no equivalent at all.
+
+        THE PERIOD IS AN ARGUMENT. This asked the reader for `""` — always the latest
+        month — which is why the strip could be fixed to fire and this tab would still
+        have shown August whichever column was pressed. The reader keeps `""` meaning
+        "the latest", so a pane built with no period behaves as it always did.
         """
         reader = (context or {}).get("analytics_records")
         data: dict[str, Any] = {}
         if callable(reader):
             try:
-                got = reader("")
+                got = reader(period)
                 data = got if isinstance(got, dict) else {}
             except Exception:
                 data = {}
@@ -1006,14 +1230,18 @@ class PimOverview:
                 "last seen": _as_text(v.get("last_seen_at"))[:10],
                 "returning": "yes" if v.get("returning_from_prior_month") else "",
             })
-        period = _as_text(data.get("period"))
+        # The month the STORE answered with, not the one asked for. The reader resolves
+        # `""` to its own latest leaflet, so the heading is only true if it comes back
+        # from the answer — writing `period` here would name a month nobody read.
+        answered = _as_text(data.get("period"))
         returning = sum(1 for r in rows if r["returning"])
         return {
             "schema": _SCHEMA, "container": "record_table",
-            "title": f"Visitors · {period}" if period else "Visitors",
+            "title": f"Visitors · {answered}" if answered else "Visitors",
             "columns": ["who", "visits", "arrived by", "first seen", "last seen",
                         "returning"],
             "rows": rows, "row_count": len(rows),
+            "notice": stale_note,
             "count_label": (f"{len(rows)} people"
                             + (f" · {returning} returning" if returning else "")),
             "note": ("One row per person for this month. Names are labels this site "
@@ -1112,19 +1340,49 @@ class PimOverview:
         # many addresses; what somebody wants to know is how many are finished — the
         # send-as stage is the only thing on this tab that has a pending state.
         done = sum(1 for r in drawn if _as_text(r.get("send-as")).lower().startswith("verif"))
-        table = self._seam_pane("Email", state, rows=drawn, what=what, columns=columns)
+        # THE NEWSLETTER'S ADDRESS, on the same list (2026-10-07). A client looked for
+        # `news@` among "the verified addresses" and did not find it — it is not a mailbox
+        # anyone signs in to, so no profile lists it, but it IS one of this instance's
+        # addresses: issues are mailed TO it and the newsletter goes out AS it. Shown as a
+        # row of its own, below the mailboxes, outside their count and their picker (there
+        # is no forwarding to change and no setup email to send; who may mail an issue to
+        # it is the profile's allowed_submitters, named in the row).
+        subscribers = (context or {}).get("subscribers")
+        list_address = _as_text((subscribers or {}).get("list_address")) if isinstance(subscribers, dict) else ""
+        newsletter_row = None
+        if list_address:
+            submitters = [_as_text(a) for a in ((subscribers or {}).get("allowed_submitters") or []) if _as_text(a)]
+            count = int((subscribers or {}).get("count") or 0)
+            last = (subscribers or {}).get("last_dispatch") or {}
+            last_sentence = _last_send_sentence(last)
+            newsletter_row = {
+                "address": list_address,
+                "forwards to": (f"the newsletter — {count:,} reader(s)" if count
+                                else "the newsletter — nobody has subscribed yet")
+                               + (f" · {last_sentence}" if last_sentence else ""),
+                "send-as": ("the newsletter's sender · accepts issues from "
+                            + ", ".join(submitters) if submitters
+                            else "the newsletter's sender · no submitter is allowed yet"),
+            }
+        table = self._seam_pane("Email", state, rows=[*drawn, *([newsletter_row] if newsletter_row else [])],
+                                what=what, columns=columns)
         table["configured"] = True
         table["why_not"] = ""
         open_address = _as_text((query or {}).get(ADDRESS_QUERY))
         if drawn:
             table["count_label"] = (
                 f"{len(drawn)} address(es) · {done} verified"
-                if done != len(drawn) else f"{len(drawn)} address(es) · all verified")
+                if done != len(drawn) else f"{len(drawn)} address(es) · all verified"
+            ) + (" · plus the newsletter's" if newsletter_row else "")
             table["notice"] = (
                 "Open an address to change where it forwards or to re-send its setup "
                 "email. An address that is not verified cannot send as itself yet — its "
                 "owner finishes that from the setup email, which two of the buttons on an "
-                "open address SEND; nothing else here sends anything.")
+                "open address SEND; nothing else here sends anything."
+                + (f" {list_address} is the newsletter's address, not a mailbox: mail an "
+                   "issue to it from an address it accepts and it goes to every reader."
+                   if newsletter_row else "")
+                + (f" {_last_send_notice(last)}" if newsletter_row and _last_send_notice(last) else ""))
             table["pick"] = {
                 "label": "Open an address",
                 "param": ADDRESS_QUERY,
@@ -1383,9 +1641,25 @@ class PimOverview:
                 "container": "composite",
                 "direction": "column",
                 "panes": [{"panel_payload": table},
-                          *self._arrangement_forms(root, parents, subjects)],
+                          *self._one_act_at_a_time(self._arrangement_forms(root, parents, subjects))],
             },
         }
+
+    @staticmethod
+    def _one_act_at_a_time(forms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Three forms side by side are seven fields to read before doing one thing
+        (2026-10-07). One act at a time: the forms become tabs of one pane — Add a grouping ·
+        Rename · Move — and a person reads the two or three fields of the act they chose.
+        A single form stays a form; none stays none."""
+        if len(forms) < 2:
+            return forms
+        tabs = []
+        for entry in forms:
+            form = entry.get("panel_payload") or {}
+            title = _as_text(form.get("title")) or "Act"
+            tabs.append({"id": title.lower().replace(" ", "_"), "label": title, "panel_payload": form})
+        return [{"panel_payload": {"schema": _SCHEMA, "container": "tabbed", "title": "",
+                                   "tabs": tabs, "active_tab": tabs[0]["id"]}}]
 
     def _arrangement_forms(self, root: str, parents: list[dict[str, str]],
                            subjects: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -1419,7 +1693,7 @@ class PimOverview:
             ],
             "submit_label": "Add grouping",
             "submit_action": {
-                "route": f"{_RESOURCES_ROUTE}/define_type",
+                "route": f"{_RESOURCES_ROUTE}/define_type", "icon": "add",
                 "success_label": "Added",
             },
         }
@@ -1439,7 +1713,7 @@ class PimOverview:
             ],
             "submit_label": "Rename",
             "submit_action": {
-                "route": f"{_RESOURCES_ROUTE}/rename_node",
+                "route": f"{_RESOURCES_ROUTE}/rename_node", "icon": "edit",
                 "success_label": "Renamed",
             },
         }
@@ -1457,7 +1731,9 @@ class PimOverview:
                 # meant. Drawing the choice satisfies that rather than dodging it — what
                 # the writer refuses is a caller deciding silently, and a labelled select
                 # opened on the ordinary meaning of "move" is not silent.
-                {"key": "descendants", "label": "What goes with it", "type": "select",
+                # Asked second (2026-10-07): the default — the branch moves together — is the
+                # answer nearly every time, so this waits behind "More".
+                {"key": "descendants", "label": "What goes with it", "type": "select", "secondary": True,
                  "value": "follow", "options": [
                      {"value": "follow",
                       "label": "Everything inside it comes along"},
@@ -1467,7 +1743,7 @@ class PimOverview:
             ],
             "submit_label": "Move",
             "submit_action": {
-                "route": f"{_RESOURCES_ROUTE}/move_node",
+                "route": f"{_RESOURCES_ROUTE}/move_node", "icon": "right",
                 "success_label": "Moved",
             },
         }
@@ -1617,6 +1893,11 @@ class PimOverview:
                 # The plan before the services: "what am I on" is answered before "what
                 # do I hold", and the trial and the card live with the plan.
                 {"panel_payload": self._plan_pane(context)},
+                # A free account's one action, right under the plan that names it.
+                *([{"panel_payload": self._upgrade_pane(context)}]
+                  if plan_of(context).get("tier") == "free"
+                  and isinstance(context.get("routes"), dict)
+                  and context["routes"].get("account_upgrade") else []),
                 {"panel_payload": self._services_pane(context)},
                 {"panel_payload": self._storage_pane(context)},
             ],
@@ -1708,10 +1989,11 @@ class PimOverview:
         query = dict(extra_query or {})
         sandbox = _as_text(sandbox_id)
 
+        msn = _as_text(context.get("msn_id"))
         email = seam_state(_config(private_dir), port_id="email_provider",
-                           sandbox=sandbox, bindings=context.get("bindings"))
+                           sandbox=sandbox, msn_id=msn, bindings=context.get("bindings"))
         site = seam_state(_config(private_dir), port_id="site_hosting",
-                          sandbox=sandbox, bindings=context.get("bindings"))
+                          sandbox=sandbox, msn_id=msn, bindings=context.get("bindings"))
 
         design = PimDesign()
 

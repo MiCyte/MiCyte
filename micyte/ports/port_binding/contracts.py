@@ -172,6 +172,17 @@ class PortBinding:
     def actor_id(self) -> str:
         return port_actor_id(self.binding_id)
 
+    @property
+    def addresses(self) -> tuple[tuple[str, str], ...]:
+        """The ``(msn_id, sandbox)`` pairs this binding acts for — its ADDRESSES.
+
+        A sandbox NAME repeats across instances (every client's app sandbox is `pim`);
+        the pair does not. Readers that select a binding ask by the pair
+        (:meth:`PortBindingSet.for_instance`), never by the name alone.
+        """
+        return tuple((self.msn_id, sandbox) for sandbox in self.sandbox_ids)
+
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "binding_id": self.binding_id,
@@ -256,6 +267,13 @@ class PortBindingSet:
             seen.add(binding.binding_id)
 
     def for_port(self, port_id: str) -> tuple[PortBinding, ...]:
+        """Every binding on ``port_id``, whoever's — a LISTING, never a resolver.
+
+        For an operator's table, a catalogue of filled ports, or a reverse lookup that
+        goes on to match each binding by its credential's msn. A caller that wants THE
+        binding for an instance asks :meth:`for_instance`; `for_port(...)[0]` is the
+        cross-tenant read (TASK-2026-09-30-001), and the architecture suite refuses it.
+        """
         token = _as_text(port_id)
         return tuple(b for b in self.bindings if b.port_id == token)
 

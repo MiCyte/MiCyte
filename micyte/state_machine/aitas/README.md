@@ -1,6 +1,6 @@
 # AITAS
 
-Authority: [../../../../docs/plans/v2-authority_stack.md](../../../../docs/plans/v2-authority_stack.md)
+Authority: [../../../docs/wiki/separation_and_responsibility.md](../../../docs/wiki/separation_and_responsibility.md)
 
 `micyte/state_machine/aitas/` owns the AITAS context model used by NIMM envelopes.
 

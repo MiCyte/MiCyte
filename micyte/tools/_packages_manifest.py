@@ -36,8 +36,16 @@ from micyte.ports.tool_package import (
 MANIFEST_SCHEMA = "micyte.packages.manifest.v1"
 
 #: What is NOT part of a package's declaration: its version (the thing the digest
-#: decides), and the words a human reads. One definition; the lock script uses this one.
-EXCLUDED_FROM_DIGEST = ("version", "label", "summary", "icon")
+#: decides), the words a human reads, and whether the PUBLISHER lists it. One
+#: definition; the lock script uses this one.
+#:
+#: `publishable` joins the exclusions on 2026-10-04 with the field itself, and the test
+#: for whether something belongs here is the one `lock_packages.py` states: the digest
+#: is what an INSTANCE compares to decide whether to update. Whether micyte.com puts a
+#: card on a page changes nothing about what an instance would install, so including it
+#: would have bumped all eight versions to record a fact no instance acts on — and a
+#: version bump that means nothing teaches an operator to ignore version bumps.
+EXCLUDED_FROM_DIGEST = ("version", "label", "summary", "icon", "publishable")
 
 
 def declaration_digest(package: ToolPackage) -> str:

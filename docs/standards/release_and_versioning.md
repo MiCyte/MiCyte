@@ -16,12 +16,43 @@ section of `CHANGELOG.md`, and `micyte.com/get` (the page that offers the wheel)
 
 ## Where a release lives (D5)
 
-The public repository `Fruitful-Network-Development/micyte` is the release source of
-truth: it is what `micyte.com/get` links, and its tag `v<version>` with the wheel on the
+The public repository `MiCyte/MiCyte` is the release source of truth (since
+2026-10-09; `Fruitful-Network-Development/micyte` held releases 0.1.0–0.4.1, which were
+carried over with their history, tags and byte-identical wheels): it is what `micyte.com/get` links, and its tag `v<version>` with the wheel on the
 release page is the artifact. This tree (`mycite-core`) is where the work happens; its
 own `micyte-v0.1.0` release is retired. The public tree is CUT from this one — `micyte/`,
-`docs/wiki`, `docs/standards`, `LICENSE`, `README.md`, `pyproject.toml` and the public
-scripts — never edited in place, so the two cannot drift.
+the public half of `docs/` **as `scripts/release_gate_scan.py` classifies it** (all of
+`docs/wiki` and `docs/standards`, and `docs/contracts` minus the FND-domain clusters its
+`PRIVATE_CONTRACT_PATTERNS` name), `LICENSE`, `README.md`, `CHANGELOG.md`,
+`pyproject.toml`, `.gitignore` and the public scripts — never edited in place, so the two
+cannot drift. Until 2026-10-08 this paragraph said "`docs/wiki`, `docs/standards`" while
+the cut had exported the public contracts since it was written (side-2026-10-08-0009);
+`micyte.com/get` and `/surfaces` link those contract pages, and they are public because
+the gate says so, not because this page did.
+
+The **sdist** is narrower on purpose: `pyproject.toml` includes `docs/wiki` and
+`docs/standards` only. An sdist is built from whatever tree runs `python -m build`, and
+from this one it would carry the private contracts; the cut builds only the wheel, and the
+public repository is where the contracts are read.
+
+## Where the organization lives
+
+The public repository is `MiCyte/MiCyte`, in the MiCyte GitHub organization (since
+2026-10-09; the organization also holds `MiCyte/TXA` and `MiCyte/Registrar`, which document
+the taxonomy and the registrar's datums). Its name is a code constant; if it ever moves
+again, these are the edits — everything else reads from them:
+
+| where | what |
+|---|---|
+| `scripts/publish_micyte.py` `PUBLIC_REPO` | the cut's push target and `gh release` repository — **the one declaration** |
+| `fnd_app/scripts/export_micyte_package_catalog.py` | reads `PUBLIC_REPO` into the catalogue's `release.source`; the site stamps every repository link it states from that value (`stamp_release.py` in the site repo), so no page is edited by hand |
+| `pyproject.toml` `[project.urls] Source` | ships in the wheel's metadata (it named `micyte-core`, the private tree, until 2026-10-08) |
+| `README.md` | the releases link |
+| this page | the paragraph above |
+| the two systemd units under `fnd_app/deploy/systemd/` | `Documentation=` lines naming `mycite-core` (host-side; not in the cut) |
+
+The site's hosted templates (`fnd_app/.../templates/hosted/*.html`) carry a footer
+"Source" link typed by hand; they are served by the host, not cut, and are a known edit.
 
 ## The cut
 

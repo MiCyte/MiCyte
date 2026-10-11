@@ -26,9 +26,6 @@ from . import (
     export_manager,  # noqa: F401  (preview-then-take CSV; the one surface data leaves by)
     farm_profile_viewer,  # noqa: F401  (consolidated: profile_card + geospatial_projection)
     geospatial_projection_viewer,  # noqa: F401  (LIBRARY since Phase 1: geometry base, no longer a tool)
-    grantor_overview,  # noqa: F401  (the grantor app's home: prices against measured overhead)
-    grantor_permissions,  # noqa: F401  (declared/bound/granted per operation, and the two verbs)
-    grantor_tolling,  # noqa: F401  (R8: the AWS cost record, residue first)
     job_manager,  # noqa: F401  (writable job log; appends, never rewrites the catalog)
     job_synopsis,  # noqa: F401  (derivation: what the work adds up to)
     lcl_editor,  # noqa: F401  (lcl node graph as the editing surface)
@@ -51,13 +48,24 @@ from . import (
     resource_manifests,  # noqa: F401  (the shared leaflet library, its users, and the two deletes)
     rolodex,  # noqa: F401  (INSTRUMENT: every sandbox's contacts, read across the instance)
     samras_structure_viewer,  # noqa: F401  (unified txa/msn/lcl structure viewer)
-    signin_manager,  # noqa: F401  (OPERATOR: client sign-ins + the acts on them, via the host)
     sources_manager,  # noqa: F401  (CORE: what this sandbox declares it reads from others)
     stock_ledger,  # noqa: F401  (brevat's Stock tab: what came in, what went out)
     taxonomy_domain_viewer,  # noqa: F401  (txa taxonomy graph w/ produce icons; taxonomy sandbox)
     viewscope_view,  # noqa: F401  (the archetype-driven renderer; replaces per-kind viewers)
 )
 
+# MOVED OUT OF THIS PACKAGE 2026-10-04 (TASK-2026-10-02-002 P4), and they are not
+# "intentionally not imported" — they are not here at all:
+#
+#   grantor_overview / grantor_books / grantor_tolling / grantor_permissions
+#   signin_manager
+#
+# They are FND's application over the clients FND hosts, in
+# `fnd_app/instances/_shared/grantor/`, and they register into THIS registry from there
+# at the host's import time. `micyte/__init__.py` says "This package must import nothing
+# of FND's grantee services"; it did not import them, it CONTAINED them, and the boundary
+# test passed because import-cleanliness is not domain-cleanliness.
+#
 # Intentionally NOT imported (so they do not self-register into the viz palette):
 #   * home_config / agro_calendar_viewer — DELETED (Compendium redesign,
 #     TASK-2026-08-16-001; the calendar-only rail). Their visualizing capacity moved

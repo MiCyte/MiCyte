@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from micyte.tools.pim_overview import (
+    ANALYTICS_PERIOD,
     ANALYTICS_QUERY,
     PimOverview,
     _month_label,
@@ -34,6 +35,9 @@ MONTHS = [
 ]
 LIVE = {
     "summary": {"unique_visitors": 72},
+    # The window the rollup actually summed. `build_analytics_summary` writes this block
+    # from its own start/end dates, and it is the ONE reader of what the figures cover.
+    "period": {"start": "2026-06-01", "end": "2026-08-29"},
     "top_pages": [{"key": "/", "count": 135}, {"key": "/media.html", "count": 118}],
     "top_referrers": [{"key": "l.instagram.com", "count": 25}],
     "widgets": {
@@ -46,6 +50,24 @@ LIVE = {
                         "single_page_session_rate": 0.667,
                         "average_active_time_ms": 5775}],
 }
+
+
+class _RecordingRecords:
+    """An `analytics_records` reader that REMEMBERS which month it was asked for.
+
+    The assertion the original defect needed and nobody wrote. `_visitor_log` called
+    `reader("")` — always the latest — so every payload check passed while the period
+    control moved nothing: the rows were right for a month the reader had not chosen. A
+    test that only reads the returned payload cannot tell those two apart.
+    """
+
+    def __init__(self, data: dict | None = None) -> None:
+        self.asked: list[str] = []
+        self._data = data or {}
+
+    def __call__(self, period: str = "") -> dict:
+        self.asked.append(period)
+        return self._data
 
 
 def _context(**over):
@@ -90,7 +112,13 @@ class TheOverviewIsDrawnNotTabulated(unittest.TestCase):
 
     def test_the_strip_is_also_the_period_control(self) -> None:
         # A chart and a navigator as one object, rather than a chart plus a dropdown.
+        #
+        # `param` is what makes it one: the chart renderer's `series` branch emits
+        # `data-chart-pick` and binds the click ONLY for a payload that names a param, and
+        # this payload named none for the first day of its life. Every column drew as a
+        # button and nothing happened when it was pressed.
         strip = self.leaves[0]
+        self.assertEqual(strip["param"], ANALYTICS_PERIOD)
         self.assertEqual(strip["active"], "2026-08")
 
     def test_the_strip_says_which_way_it_moved(self) -> None:
@@ -191,6 +219,123 @@ class ItStillWorksWithoutTheLiveRollup(unittest.TestCase):
     def test_no_months_and_no_rollup_reports_the_seam(self) -> None:
         tab = _analytics(_context(analytics=None, analytics_summary=lambda days=90: {}))
         self.assertEqual(tab["container"], "record_table")
+
+
+class TheStripIsTheNavigatorItWasDescribedAs(unittest.TestCase):
+    """It shipped described as "the growth chart and the period navigator in one object"
+    and was a picture: no `param`, so the columns called nothing; and `_visitor_log` asked
+    for the latest month whatever was pressed. These are the checks that tell a control
+    from a drawing of one."""
+
+    def _strip(self, tab):
+        overview = next(t["panel_payload"] for t in tab["tabs"] if t["id"] == "overview")
+        return _panes(overview)[0]
+
+    def _log(self, tab):
+        return next(t["panel_payload"] for t in tab["tabs"] if t["id"] == "visitors")
+
+    def test_a_chosen_period_is_the_month_the_log_asks_for(self) -> None:
+        """THE assertion the original bug needed. The payload was right either way; what
+        was wrong was the argument the reader was called with."""
+        reader = _RecordingRecords()
+        _analytics(_context(analytics_records=reader),
+                   query={ANALYTICS_PERIOD: "2026-07"})
+        self.assertEqual(reader.asked, ["2026-07"])
+
+    def test_with_nothing_chosen_it_asks_for_the_latest_month(self) -> None:
+        """The month the strip lights, not `""`. The store resolves `""` to its own newest
+        leaflet, which is a second opinion about "latest" — and the two disagree the day a
+        leaflet is written for a month the datum has not folded in yet, leaving the strip
+        lighting one column while the log below reads another."""
+        reader = _RecordingRecords()
+        _analytics(_context(analytics_records=reader))
+        self.assertEqual(reader.asked, ["2026-08"])
+
+    def test_choosing_a_period_lights_that_column(self) -> None:
+        strip = self._strip(_analytics(query={ANALYTICS_PERIOD: "2026-07"}))
+        self.assertEqual(strip["active"], "2026-07")
+
+    def test_the_months_table_flags_the_selection(self) -> None:
+        """A control that changes nothing a reader can see on the next tab is
+        indistinguishable from one that did not fire."""
+        tab = _analytics(query={ANALYTICS_PERIOD: "2026-07"})
+        months = next(t["panel_payload"] for t in tab["tabs"] if t["id"] == "months")
+        self.assertEqual(months["row_class_key"], "selected")
+        flagged = [r["period"] for r in months["rows"] if r["selected"]]
+        self.assertEqual(flagged, ["2026-07"])
+        # `selected` marks the row without becoming a cell; the highlight says it.
+        self.assertNotIn("selected", months["columns"])
+
+    def test_the_sub_tab_and_the_period_are_different_keys(self) -> None:
+        """A nested control must not move its parent. Sharing `ANALYTICS_QUERY` would
+        throw the reader back to Overview the moment they picked a month on Visitors."""
+        from micyte.tools.pim_overview import TAB_QUERY
+
+        self.assertNotIn(ANALYTICS_PERIOD, {ANALYTICS_QUERY, TAB_QUERY})
+
+
+
+class AVanishedMonthSaysSoRatherThanLookingBroken(unittest.TestCase):
+    """A saved link naming a month that is no longer kept. `_posts_pane`'s stale slug is
+    the established shape: give them the nearest thing that exists AND say why."""
+
+    def setUp(self) -> None:
+        self.reader = _RecordingRecords()
+        self.tab = _analytics(_context(analytics_records=self.reader),
+                              query={ANALYTICS_PERIOD: "2026-01"})
+        self.strip = _panes(next(t["panel_payload"] for t in self.tab["tabs"]
+                                 if t["id"] == "overview"))[0]
+        self.log = next(t["panel_payload"] for t in self.tab["tabs"]
+                        if t["id"] == "visitors")
+
+    def test_it_falls_back_to_the_latest(self) -> None:
+        self.assertEqual(self.strip["active"], "2026-08")
+        self.assertEqual(self.reader.asked, ["2026-08"])
+
+    def test_it_names_the_month_it_could_not_give_them(self) -> None:
+        self.assertIn("Jan 2026", self.strip["note"])
+        self.assertIn("Aug 2026", self.strip["note"])
+
+    def test_the_visitor_log_carries_the_same_explanation(self) -> None:
+        """Where a link naming that month lands. An unexplained August under a request for
+        January reads as a control that ignored them."""
+        self.assertIn("Jan 2026", self.log["notice"])
+
+    def test_the_bot_note_is_kept_beside_it(self) -> None:
+        """The strip draws one `note`; the stale line joins it rather than replacing the
+        sentence that explains the shaded foot of every column."""
+        self.assertIn("automated traffic", self.strip["note"])
+
+    def test_a_month_that_exists_says_nothing_extra(self) -> None:
+        tab = _analytics(query={ANALYTICS_PERIOD: "2026-07"})
+        log = next(t["panel_payload"] for t in tab["tabs"] if t["id"] == "visitors")
+        self.assertEqual(log["notice"], "")
+
+
+class TheWindowLabelIsReadOffTheRollup(unittest.TestCase):
+    """"last 90 days" was a hardcoded string, true only because nothing in the tab could
+    ask for another window. A label restating a constant is a claim the code does not
+    own."""
+
+    def _arrivals(self, live):
+        tab = _analytics(_context(analytics_summary=lambda days=90: live))
+        overview = next(t["panel_payload"] for t in tab["tabs"] if t["id"] == "overview")
+        return next(p for p in _panes(overview)
+                    if p.get("title") == "How people arrived")
+
+    def test_it_names_the_span_the_rollup_reports(self) -> None:
+        self.assertEqual(self._arrivals(LIVE)["count_label"], "1 Jun to 29 Aug 2026")
+
+    def test_the_year_is_said_once_when_both_ends_share_it(self) -> None:
+        live = dict(LIVE, period={"start": "2025-12-15", "end": "2026-03-15"})
+        self.assertEqual(self._arrivals(live)["count_label"],
+                         "15 Dec 2025 to 15 Mar 2026")
+
+    def test_a_rollup_that_names_no_window_makes_no_claim(self) -> None:
+        live = {k: v for k, v in LIVE.items() if k != "period"}
+        arrivals = self._arrivals(live)
+        self.assertEqual(arrivals["count_label"], "")
+        self.assertNotIn("90", arrivals["empty_text"])
 
 
 class TheSubTabHasItsOwnParameter(unittest.TestCase):

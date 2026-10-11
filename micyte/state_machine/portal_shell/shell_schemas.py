@@ -86,11 +86,23 @@ WORKBENCH_UI_SANDBOX_TOKEN = "system"  # Workbench-UI is a system-sandbox reflec
 #: 2026-08-14: the three entity-named sandboxes below were renamed to it, so a name no
 #: longer picks a tenant. An INSTANCE is an msn; the pair `(msn_id, sandbox)` is the address.
 CORE_SANDBOX_TOKEN = "system"
-#: The instance the legacy ``/portal/agro-erp`` route is pinned to. Named for the ROLE, not
-#: the party: this constant used to be ``AGRO_ERP_LEGACY_MSN_ID``, which bound a family's
-#: name to their network address inside the package the repo split publishes. The VALUE is
-#: unchanged — only the symbol moved.
-AGRO_ERP_LEGACY_MSN_ID = "3-2-3-17-77-2-6-3-1-6"
+# THE LEGACY ROUTE'S PINNED INSTANCE IS GONE FROM HERE (2026-10-04,
+# TASK-2026-10-02-002 P4). `AGRO_ERP_LEGACY_MSN_ID` held one live instance's network
+# address, in the package the public cut publishes, for ONE reader: the host's own route
+# map (`app.py`, `"agro-erp": {"msn_filter": ...}`).
+#
+# Its own comment already recorded half of this. It had been renamed from a symbol naming
+# the family, "which bound a family's name to their network address inside the package the
+# repo split publishes" — and the rename moved the NAME while the VALUE, which is the
+# address itself, stayed. A role-shaped symbol holding a party's address is still a
+# party's address in a published file.
+#
+# It now lives beside its reader, in the host's own portal application. A legacy redirect
+# for one deployment's bookmark is that deployment's business.
+#
+# (The path is not spelled here on purpose: `test_state_machine_boundaries` forbids this
+# layer naming a runtime tree, and it is right to — a state machine that knows where a
+# host keeps its application is a state machine with one host.)
 
 # Deleted 2026-08-22: RETIRED_SANDBOX_MSN_IDS and the three sandbox-token constants beside
 # it. They read as a bookmark-redirect map — "kept only so a stored bookmark that still says

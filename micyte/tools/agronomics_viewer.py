@@ -46,6 +46,22 @@ from .plot_overview_viewer import PlotOverviewViewer
 from .taxa_product_table import TaxaProductTable
 
 _SCHEMA = "mycite.v2.portal.workbench.tool.agronomics.v1"
+
+#: The tools whose panes this builder composes — the FARM / PLAN / NETWORK / Flora &
+#: Fauna panes, lifted whole into `brevat` on a farm sandbox.
+#:
+#: A LIBRARY's declaration rather than a hub's, because that is what this module became
+#: when `agronomics` left the rail. It is typed here and not derived, because these panes
+#: are built inline (three `ObjectsViewer` calls with different `filter_kinds`, a map base
+#: built once for three sub-tabs) rather than from a table — so
+#: `test_tool_registry_shape.TheCompositionClaimsAreTrue` proves each entry by finding its
+#: class instantiated in this module's own source. A name added here that nothing builds
+#: fails that test.
+COMPOSES: tuple[str, ...] = (
+    "farm_profile", "plot_overview", "plot_manager", "object_manager",
+    "planting_map", "planting_calendar", "network_map", "entity_profile_table",
+    "taxa_product_table",
+)
 # The LCL id-space is the agronomics structure of interest; default the right pane to it.
 _DEFAULT_STRUCTURE = "lcl"
 # The txa taxonomy lives in its own dedicated sandbox (not agro_erp); the Taxonomy Domain
@@ -95,6 +111,8 @@ class AgronomicsViewer:
     applies_to_source_kind: tuple[str, ...] = ()
     # Pass the surface_query through so the right pane's structure <select> works.
     wants_surface_query = True
+    #: What this builder composes. See `COMPOSES`.
+    composes: tuple[str, ...] = COMPOSES
 
     def build_panel_payload(
         self,

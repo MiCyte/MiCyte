@@ -56,6 +56,7 @@ from micyte.core.instance_baseline import LCL_DOCUMENT
 from micyte.ports.tool_package import DocumentRequirement, ToolRequirement
 from micyte.state_machine.portal_shell.shell_schemas import WORKBENCH_UI_TOOL_ROUTE
 
+from ._composition import composed_ids
 from ._registry import register
 from .inbox_viewer import inbox_payload
 from .lcl_editor import LclEditorViewer
@@ -160,6 +161,13 @@ TABS: tuple[tuple[str, str, Any], ...] = (
     ("config", "Config", None),
 )
 
+#: What this hub composes, DERIVED from the table above. The two `None` tabs are its own
+#: panes (the inbox and the config read-out), so they contribute nothing: a hub does not
+#: compose itself.
+COMPOSES: tuple[str, ...] = composed_ids(
+    factory() for _tab, _label, factory in TABS if factory is not None
+)
+
 
 class Oveure:
     """The surfaces an instance that keeps knowledge needs, in one place."""
@@ -171,6 +179,8 @@ class Oveure:
     summary = "Write your own tree of topics, and answer the mail against it."
     route = WORKBENCH_UI_TOOL_ROUTE
     container = "tabbed"
+    #: What this hub composes. See `COMPOSES`.
+    composes: tuple[str, ...] = COMPOSES
     applies_to_archetype: tuple[str, ...] = (NOTE_ARCHETYPE,)
     applies_to_source_kind: tuple[str, ...] = ()
     wants_surface_query = True
@@ -244,4 +254,4 @@ class Oveure:
 
 register(Oveure())
 
-__all__ = ["DEFAULT_TAB", "TABS", "TAB_QUERY", "Oveure"]
+__all__ = ["COMPOSES", "DEFAULT_TAB", "TABS", "TAB_QUERY", "Oveure"]
