@@ -140,6 +140,7 @@ def _config() -> dict[str, Any]:
 
 def _hub_pane(
     tab_id: str, *, authority_db_file: Path | None, sandbox: str,
+    query: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The panes the hub builds itself — the ones with no standalone tool behind them.
 
@@ -149,7 +150,7 @@ def _hub_pane(
     """
     del authority_db_file
     if tab_id == "inbox":
-        return inbox_payload(sandbox=sandbox, providers=OVEURE_PROVIDERS)
+        return inbox_payload(sandbox=sandbox, providers=OVEURE_PROVIDERS, query=query)
     return _config()
 
 
@@ -209,7 +210,8 @@ class Oveure:
             try:
                 if tool is None:
                     payload = _hub_pane(
-                        tab_id, authority_db_file=authority_db_file, sandbox=sandbox)
+                        tab_id, authority_db_file=authority_db_file, sandbox=sandbox,
+                        query=query)
                     pane_tool_id = f"oveure_{tab_id}"
                 else:
                     instance = tool()

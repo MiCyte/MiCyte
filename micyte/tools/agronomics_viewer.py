@@ -29,14 +29,14 @@ from micyte.state_machine.portal_shell.shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
 )
 
-from ._archetype import read_sandbox_catalog
+from ._archetype import read_sandbox_catalog, read_sandboxes_catalog
 from ._shared.utilities import as_text as _as_text
 from ._viewscope import viewscope_pane
 from .entity_profile_table import EntityProfileTable
 from .farm_profile_viewer import FarmProfileViewer
 from .geospatial_projection_viewer import build_geospatial_payload, resolve_farm_profile
 from .local_domain_viewer import build_record_view
-from .network_map_viewer import NetworkMapViewer, build_network_map_base
+from .network_map_viewer import MAP_SANDBOXES, NetworkMapViewer, build_network_map_base
 from .object_profiles_view import build_object_rows
 from .objects_viewer import ObjectsViewer, _load_object_profiles
 from .planting_calendar_viewer import PlantingCalendarViewer
@@ -304,10 +304,16 @@ class AgronomicsViewer:
             ],
         }
         delegate_payload = PlotManagerViewer().build_panel_payload(**_kw, extra_query=eq)
+        # `tool_id` on the two tabs whose payloads name no container: the client draws them
+        # by TOOL (`__MYCITE_V2_TOOL_RENDERERS`), and the tabbed renderer's only way to know
+        # which is the tab's hint. Without it both tabs printed "No renderer for ." — found
+        # 2026-10-11 by the micyte.com demo, the first time anyone clicked Plot there.
         plan_panel = _hub("Plan", "plan_section", "planting", [
-            {"id": "plot", "label": "Plot", "panel_payload": plot_overview_payload},
+            {"id": "plot", "label": "Plot", "tool_id": PlotOverviewViewer.tool_id,
+             "panel_payload": plot_overview_payload},
             {"id": "planting", "label": "Planting", "panel_payload": planting_panel},
-            {"id": "delegate", "label": "Delegate", "panel_payload": delegate_payload},
+            {"id": "delegate", "label": "Delegate", "tool_id": PlotManagerViewer.tool_id,
+             "panel_payload": delegate_payload},
         ])
         # NETWORK tab: the resources mycelium_network publishes via its source-binary
         # manifest — the cross-sandbox seam (agro_erp loads mycelium_network's produced
@@ -337,7 +343,8 @@ class AgronomicsViewer:
 
         def _network_base() -> dict[str, Any] | None:
             if not _net_base:
-                docs, err = read_sandbox_catalog(authority_db_file, tenant_id="fnd", sandbox="registrar")
+                docs, err = read_sandboxes_catalog(authority_db_file, tenant_id="fnd",
+                                                   sandboxes=MAP_SANDBOXES)
                 _net_base.append(
                     None if err else build_network_map_base(docs, sandbox_id=sandbox))
             return _net_base[0]

@@ -4,6 +4,8 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from micyte.core.datum_ops import field_registry as _fr
+
 from .codec import decode_structure, encode_canonical_structure_from_addresses
 from .structure import (
     SamrasStructure,
@@ -14,6 +16,13 @@ from .structure import (
     parse_address_segments,
 )
 from .validation import InvalidSamrasStructure
+
+# The staged node rows this adapter reconstructs from are the registrar's msn-SAMRAS
+# rows: the node's SAMRAS address rides the registrar's `msn_id` cell and its ASCII
+# title overlay the registrar's `title`. Only the REGISTRAR numbering puts those two
+# fields at these markers (system reads 3-1-2 as `coordinate`, farm as `title`).
+_NODE_MARKER = _fr.marker(_fr.REGISTRAR, "msn_id")
+_TITLE_MARKER = _fr.marker(_fr.REGISTRAR, "title")
 
 
 def _split_row_source(payload: dict[str, Any]) -> dict[str, Any]:
@@ -221,7 +230,7 @@ def reconstruct_addresses_from_rows(payload: dict[str, Any]) -> list[str]:
     for raw_value in row_source.values():
         base = _raw_base(raw_value)
         for index, token in enumerate(base):
-            if as_text(token) != "rf.3-1-2" or index + 1 >= len(base):
+            if as_text(token) != _NODE_MARKER or index + 1 >= len(base):
                 continue
             candidate = as_text(base[index + 1])
             if _looks_like_address(candidate):
@@ -280,9 +289,9 @@ def _title_rows_by_address(payload: dict[str, Any], valid_addresses: set[str]) -
         title_bits = ""
         for index, token in enumerate(base):
             marker = as_text(token)
-            if marker == "rf.3-1-2" and index + 1 < len(base):
+            if marker == _NODE_MARKER and index + 1 < len(base):
                 node_id = as_text(base[index + 1])
-            if marker == "rf.3-1-3" and index + 1 < len(base):
+            if marker == _TITLE_MARKER and index + 1 < len(base):
                 title_bits = as_text(base[index + 1])
         if node_id not in valid_addresses:
             continue

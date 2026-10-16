@@ -221,6 +221,11 @@ class InboundMessage:
     references: tuple[str, ...] = ()
     recipients: tuple[str, ...] = ()
     headers: dict[str, str] = field(default_factory=dict)
+    #: What the message carries besides its body — one row per part, METADATA ONLY:
+    #: ``{part, filename, content_type, size, content_id, inline}``. The bytes are a
+    #: separate call (:meth:`EmailProviderPort.fetch_attachment`), so opening a message
+    #: never drags a 20 MB attachment through the request that reads its text.
+    attachments: tuple[dict[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("message_key", "mailbox", "sender"):
@@ -234,6 +239,9 @@ class InboundMessage:
                 self, name,
                 tuple(t for t in (str(v or "").strip() for v in (getattr(self, name) or ())) if t))
         object.__setattr__(self, "headers", dict(self.headers or {}))
+        object.__setattr__(
+            self, "attachments",
+            tuple(dict(row) for row in (self.attachments or ()) if isinstance(row, dict)))
 
     @property
     def entry(self) -> MailboxEntry:
@@ -265,7 +273,24 @@ class InboundMessage:
             "message_id": self.message_id,
             "references": list(self.references),
             "recipients": list(self.recipients),
+            "attachments": [dict(row) for row in self.attachments],
         }
+
+
+@dataclass(frozen=True)
+class InboundPart:
+    """One attachment or inline part of a received message, with its bytes.
+
+    Read under :data:`OPERATION_MESSAGE_FETCH`, deliberately not an operation of its own:
+    a part is part of the message, and whoever may open the message has already been
+    trusted with everything in it. A separate grant would only let an operator permit the
+    text while withholding the invoice it refers to, which protects nobody.
+    """
+
+    filename: str
+    content_type: str
+    payload: bytes
+    inline: bool = False
 
 
 @runtime_checkable
@@ -279,8 +304,13 @@ class EmailProviderPort(Protocol):
     @property
     def provider_id(self) -> str: ...
 
-    def list_inbound(self, *, mailbox: str = "", limit: int = 0) -> tuple[MailboxEntry, ...]:
+    def list_inbound(
+        self, *, mailbox: str = "", limit: int = 0, offset: int = 0,
+    ) -> tuple[MailboxEntry, ...]:
         """What has arrived for ``mailbox`` (or every mailbox this binding may read).
+
+        Newest first; ``offset`` skips that many of the newest, so a pane pages with
+        ``(offset, limit)`` rather than loading a whole mailbox to show fifty rows.
 
         Raises :class:`EmailProviderUnavailable` rather than returning ``()`` when the
         provider could not be reached.
@@ -288,6 +318,12 @@ class EmailProviderPort(Protocol):
 
     def fetch_inbound(self, message_key: str) -> InboundMessage:
         """One message, opened. Raises when the key is outside what this binding may read."""
+
+    def fetch_attachment(
+        self, message_key: str, *, part: int | None = None, content_id: str = "",
+    ) -> InboundPart:
+        """One part of one message, by the ordinal its ``attachments`` row names or by
+        Content-ID. Fenced exactly as :meth:`fetch_inbound` — same operation, same key."""
 
     def send_message(self, message: EmailMessage) -> str:
         """Send; return the provider's message id."""
@@ -350,5 +386,6 @@ __all__ = [
     "EmailProviderPort",
     "EmailProviderUnavailable",
     "InboundMessage",
+    "InboundPart",
     "MailboxEntry",
 ]

@@ -83,7 +83,7 @@ _ENDPOINT = _fr.marker(_fr.REGISTRAR, "instance_endpoint")
 _JURISDICTION = _fr.marker(_fr.REGISTRAR, "jurisdiction_type")
 _REGION_REF = _fr.marker(_fr.REGISTRAR, "region_polygon_ref")
 
-#: Marker -> readable label, so a profile row says "dns", not "rf.3-1-9". Built
+#: Marker -> readable label, so a profile row says ``dns``, not ``rf.3-1-9``. Built
 #: from the field registry rather than hand-listed, so a new registrar field is
 #: named here the moment it is defined there.
 _FIELD_LABEL: dict[str, str] = {}

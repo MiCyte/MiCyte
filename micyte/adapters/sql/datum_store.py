@@ -2311,8 +2311,12 @@ class SqliteSystemDatumStoreAdapter(
                 # close — the projection would rebuild on every single read and
                 # that path would cost more than the blob it replaces.
                 connection.commit()
-        except Exception:  # a read-only store still gets a correct answer
-            _log.warning("could not persist the catalog index for tenant %s", tenant_id)
+        except Exception as exc:  # a read-only store still gets a correct answer
+            # The REASON rides with it: "could not persist" alone sent every reader
+            # guessing between a read-only file, a lock and a schema fault.
+            _log.warning("could not persist the catalog index for tenant %s (%s: %s); "
+                         "the index is rebuilt on the next read",
+                         tenant_id, type(exc).__name__, exc)
 
     def _refresh_index_entry(
         self, connection: Any, *, tenant_id: str, document: AuthoritativeDatumDocument | None,

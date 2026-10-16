@@ -58,6 +58,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from micyte.core.datum_ops import field_registry as fr
 from micyte.core.datum_ops.datum_resolve import decode_label
 from micyte.core.datum_ops.fiat_datum import find_fiat_chain
 from micyte.core.document_naming import parse_canonical_document_id
@@ -77,15 +78,21 @@ PROJECTION_SCHEMA = "mycite.v2.channel.demand.projection.v1"
 #: ``agnet`` must not collide with the projection derived from the same sandbox.
 PROJECTION_SUFFIX = "-demand"
 
-_TAXON = "rf.3-1-1"
-_TITLE = "rf.3-1-2"
-_PRODUCT = "rf.3-1-5"
-_NOMINAL = "rf.3-1-7"
-# The taxonomy-sandbox babelettes the taxonomy_domain tool reads, by the same
-# addresses (field_registry TAXONOMY common_name / icon_ref). Named here for the
-# same reason the four above are: this module states the cells it reads.
-_COMMON = "rf.3-1-9"
-_ICON = "rf.3-1-10"
+# The channel's own cells. The ``agnet`` sandbox speaks the FARM numbering
+# (``field_registry.NAMESPACE_BY_SANDBOX``), so its fields resolve there.
+_TAXON = fr.marker(fr.FARM, "txa_id")
+_TITLE = fr.marker(fr.FARM, "title")
+_PRODUCT = fr.marker(fr.FARM, "lcl_id")
+_NOMINAL = fr.marker(fr.FARM, "nominal")
+_MSN = fr.marker(fr.FARM, "msn_id")
+# The taxonomy-sandbox babelettes the taxonomy_domain tool reads — resolved in the
+# TAXONOMY namespace, because that is the anchor the documents they come from speak.
+# Named here for the same reason the cells above are: this module states the cells
+# it reads.
+_TXA_TAXON = fr.marker(fr.TAXONOMY, "txa_id")
+_TXA_TITLE = fr.marker(fr.TAXONOMY, "title")
+_COMMON = fr.marker(fr.TAXONOMY, "common_name")
+_ICON = fr.marker(fr.TAXONOMY, "icon_ref")
 #: ``observed_by`` (field_registry, uniform across namespaces): the DOCUMENT-LOCAL
 #: address of the observer row a record came from. Provenance stopped being a filename
 #: on 2026-08-05; this is where it went.
@@ -170,7 +177,7 @@ def _observers(document: Any) -> dict[str, dict[str, str]]:
                 key = value
             elif marker == _TITLE:
                 titles.append(decode_label(value))
-            elif marker == "rf.3-1-4" and not msn:
+            elif marker == _MSN and not msn:
                 msn = value
             elif marker == _NOMINAL and not entries:
                 entries = decode_label(value)
@@ -556,9 +563,9 @@ def _taxonomy_section(
         node_id = title = ""
         for i in range(1, len(head) - 1, 2):
             marker, value = str(head[i]), str(head[i + 1])
-            if marker == _TAXON and not node_id:
+            if marker == _TXA_TAXON and not node_id:
                 node_id = value
-            elif marker == _TITLE and not title:
+            elif marker == _TXA_TITLE and not title:
                 title = decode_label(value)
         if node_id:
             scientific[node_id] = title
@@ -572,7 +579,7 @@ def _taxonomy_section(
         node_id = ""
         for i in range(1, len(head) - 1, 2):
             marker, value = str(head[i]), str(head[i + 1])
-            if marker == _TAXON and not node_id:
+            if marker == _TXA_TAXON and not node_id:
                 node_id = value
             elif marker == _COMMON and node_id and node_id not in common:
                 common[node_id] = decode_label(value)

@@ -30,7 +30,7 @@ from ._shared.utilities import row_head as _row_head
 #: Fixed together with `datum_resolve.resolve_coordinate`, which had the same blindness one
 #: layer down. Widening one alone would have offered four tools against rings they cannot
 #: decode, which is worse than not offering them.
-_HOPS_COORD_MARKER = "rf.3-1-3"
+_HOPS_COORD_MARKER = _field_registry.marker(_field_registry.FARM, "coordinate")
 
 
 def _coordinate_markers(sandbox: str) -> set[str]:

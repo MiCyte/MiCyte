@@ -18,7 +18,7 @@ The base set had FIVE implementations and no declaration:
   fnd_app/scripts/bootstrap_farm_sandbox.py   lcl, anchor, farm_profile
   fnd_app/scripts/bootstrap_channel_sandbox.py   anchor, lcl, channel_profile, sources
   package_install_runtime.install_package     whatever the tools require
-  fnd_app/scripts/onboard_wolf_farm.py        a composition of the above
+  an applied farm-onboarding one-shot   a composition of the above (2026-07)
 
 Five lists that must agree about what an instance IS, and they already did not: only
 the client instance has ``contacts``, no instance has a ``calendar``, and none has a profile

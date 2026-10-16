@@ -24,6 +24,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from micyte.core.datum_ops import field_registry as _fr
 from micyte.core.structures.hops import decode_hops_coordinate_token
 from micyte.domains.registry import directory as _dir
 from micyte.ports.datum_write_policy import DeclaredWrite
@@ -194,6 +195,12 @@ def _editable_rows(profile: _dir.Profile) -> list[dict[str, Any]]:
 #: belongs here, and a form showing blank for a slot that holds data is the bug it prevents.
 _RUNTIME_FIELD_SOURCE: dict[str, str] = {}
 
+#: The ag profile's own cells. `member_ag_profiles` borrows the REGISTRAR numbering for
+#: every marker it carries (field_registry EXTRA_FIELDS[FARM] measures it), and its one
+#: other reader, `domains/registry/directory.py`, resolves it there too.
+_AG_MSN = _fr.marker(_fr.REGISTRAR, "msn_id")
+_AG_COORD = _fr.marker(_fr.REGISTRAR, "coordinate")
+
 
 def _node_lonlat(documents: dict[str, Any], msn_id: str) -> dict[str, float] | None:
     """The node's own coordinate as (lon, lat), from its ag profile, or ``None``.
@@ -208,9 +215,9 @@ def _node_lonlat(documents: dict[str, Any], msn_id: str) -> dict[str, float] | N
         pairs: dict[str, str] = {}
         for i in range(1, len(head) - 1, 2):
             pairs.setdefault(str(head[i]), "" if head[i + 1] is None else str(head[i + 1]))
-        if pairs.get("rf.3-1-2") != msn_id:
+        if pairs.get(_AG_MSN) != msn_id:
             continue
-        decoded = decode_hops_coordinate_token(pairs.get("rf.3-1-1", ""))
+        decoded = decode_hops_coordinate_token(pairs.get(_AG_COORD, ""))
         if decoded:
             return {"lon": float(decoded["longitude"]["value"]),
                     "lat": float(decoded["latitude"]["value"])}

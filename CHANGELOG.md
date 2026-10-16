@@ -5,6 +5,33 @@ repository is tagged `v<version>` and the wheel on its release page is the artif
 `docs/standards/release_and_versioning.md` is the process; `scripts/publish_micyte.py` is
 the cut. A section is added when the version is bumped, not after.
 
+## 0.6.0 — 2026-10-16
+
+### Tools and gadgets
+- **Quiar:** each service picked for a job carries **how many** — a "How many" box beside
+  every pick, written as the service row's counter (the `nominal` run `job_service`
+  always held). Blank is "not counted", never 1. A service both picked and typed on a
+  line is one service, not two rows.
+- **Quiar canvassing** records a knock on a tree that has both services and outcomes:
+  the canvass pane offers outcomes, the job forms offer services.
+- **Inbox:** mail attachments and inline images are listed and fetched; the message
+  list pages.
+- **Brevat** refuses a stock movement that would take a product below zero.
+
+### Network
+- The **network map** draws every region it holds and classifies hosts by their own
+  tree's vocabulary: the local domain's re-rooted numbering is translated before a
+  category is read, so a host no longer reads as "organization" by default.
+- The event vocabulary is read from a tree's labelled **subtree heads**, so a tree whose
+  roots carry their labels is never read through the pre-migration fallback.
+- Every profile cell is decoded for display (`decode_label`), bit-encoded or not.
+
+### Under the hood
+- Field markers are read from the field registry (`field_registry.marker`) everywhere a
+  literal `rf.3-1-N` stood; the one remaining literal is a reserved field no anchor
+  defines yet.
+- The email-provider port names attachments in its contract.
+
 ## 0.5.0 — 2026-10-11
 
 The first release cut into `MiCyte/MiCyte`, the MiCyte organization's repository

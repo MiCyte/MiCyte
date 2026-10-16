@@ -213,7 +213,8 @@ def city_options(space: Any, names: Any) -> list[dict[str, str]]:
     return sorted(out, key=lambda o: o["label"])
 
 
-def _lcl_options(store: Any, *, tenant_id: str, sandbox: str) -> list[dict[str, str]]:
+def _lcl_options(store: Any, *, tenant_id: str, sandbox: str,
+                 services_first: bool = True) -> list[dict[str, str]]:
     """The sandbox's OWN classification nodes — its job types.
 
     Read from `<sandbox>/lcl`, which `lcl_editor` writes. An instance adds "gutter
@@ -243,7 +244,11 @@ def _lcl_options(store: Any, *, tenant_id: str, sandbox: str) -> list[dict[str, 
 
     log = _ld.read_log(type("Doc", (), {
         "rows": tuple(type("Row", (), {"raw": raw, "datum_address": ""})() for raw in raws)})())
-    offered = service_options(log)
+    # `services_first=False` is CANVASSING's reading (2026-10-11): it narrows to its own
+    # `outcomes` branch afterwards, and a tree with a `services` branch too (a trade's tree)
+    # handed it the services alone — so every outcome was "unknown" and every
+    # knock was refused. Found by the synthetic Quiar demo's fixture.
+    offered = service_options(log) if services_first else []
     if offered:
         # `path`, so the one-line select says which trade a job type is under.
         return [{"value": o["value"], "label": o["path"]} for o in offered]
@@ -351,7 +356,7 @@ def job_document_form(
         "fields": [
             {"key": "title", "type": "text", "value": "",
              "label": "Name for this job — becomes its slot on the domain tree",
-             "placeholder": "Spring wash, 77 Parmalee"},
+             "placeholder": "Spring wash, 120 Maple"},
             # `text`, not `date`: `record_form` renders text, select and textarea and
             # nothing else, and `_encoded_day` reads YYYY-MM-DD or MM-DD-YYYY either way.
             # A `date` kind here would be renderer work for a format the writer already
@@ -367,15 +372,17 @@ def job_document_form(
              "label": "City — not narrowed by the state above; a mismatched pair is refused",
              "options": cities},
             {"key": "site_address", "type": "text", "value": "", "label": "Street address",
-             "placeholder": "77 Parmalee Drive"},
+             "placeholder": "120 Maple Street"},
             # THE SELECTION FIRST, off the tree's `services` branch (2026-09-17), drawn
             # by the same field the contact form draws — one shape, `_services.pick_field`.
-            # The textarea stays for what a checkbox cannot say: a counter and a price per
-            # service. Either may be used; a service named in both is one service.
-            *([pick_field(pick, key="services_pick", label="Jobs needed — pick from the tree")]
+            # Each pick carries its own "how many" box (2026-10-15). The textarea stays for
+            # what a box cannot say: a price per service, or a second counter. Either may be
+            # used; a service named in both is one service.
+            *([pick_field(pick, key="services_pick", label="Jobs needed — pick from the tree",
+                          quantity=True)]
               if pick else []),
             {"key": "services", "type": "textarea", "value": "",
-             "label": (("Counters and prices — optional, one per line, "
+             "label": (("Prices and extra counters — optional, one per line, "
                         "'trade | counters | price'") if pick else
                        ("Services — one per line, "
                         "'trade | counters | price'. Counters and price are optional")),

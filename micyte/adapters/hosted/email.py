@@ -24,6 +24,7 @@ from micyte.ports.email_provider import (
     EmailMessage,
     EmailProviderError,
     InboundMessage,
+    InboundPart,
     MailboxEntry,
 )
 
@@ -65,9 +66,12 @@ class HostedEmailAdapter:
                 raise PermissionError(str(exc)) from exc
             raise EmailProviderError(f"{exc.code}: {exc}") from exc
 
-    def list_inbound(self, *, mailbox: str = "", limit: int = 0) -> tuple[MailboxEntry, ...]:
+    def list_inbound(
+        self, *, mailbox: str = "", limit: int = 0, offset: int = 0,
+    ) -> tuple[MailboxEntry, ...]:
         answer = self._call(OPERATION_MAILBOX_LIST, "mail", "list",
-                            {"mailbox": mailbox, "limit": int(limit or 0)})
+                            {"mailbox": mailbox, "limit": int(limit or 0),
+                             "cursor": str(max(0, int(offset or 0)))})
         return tuple(_row(MailboxEntry, r) for r in answer.get("messages") or [] if isinstance(r, dict))
 
     def fetch_inbound(self, message_key: str) -> InboundMessage:
@@ -76,6 +80,17 @@ class HostedEmailAdapter:
         if not isinstance(message, dict):
             raise EmailProviderError("the hosted service answered without a message")
         return _row(InboundMessage, message)
+
+    def fetch_attachment(
+        self, message_key: str, *, part: int | None = None, content_id: str = "",
+    ) -> InboundPart:
+        # REFUSED HERE, before anything is authorized or sent. The key door answers in
+        # JSON and carries no message's bytes but its text; an attachment needs a binary
+        # answer that door does not have yet. The message's `attachments` rows still
+        # arrive, so the reader can see what is there and fetch it on the host's portal.
+        raise EmailProviderError(
+            "attachments are not carried across the key door yet; open this message on "
+            "the hosting portal to download its parts")
 
     def send_message(self, message: EmailMessage) -> str:
         answer = self._call(OPERATION_MESSAGE_SEND, "mail", "send", {

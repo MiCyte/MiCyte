@@ -3,7 +3,8 @@
 
 Extracted verbatim from the retired one-shot ``ingest_agro_erp_ledger.py`` (the
 2026-06 ledger ingest, long applied) so the LIVE consumers — ``agro_write_runtime``,
-``add_agro_erp_contract``, ``edit_agro_erp_farm_profile``, ``add_product_unit_weight``
+``add_agro_erp_contract``, and (until they moved to ``_applied/`` on 2026-10-15) the agro-ERP
+farm-profile editor and the product unit-weight script
 — stop depending on a superseded migration script. Pure helpers; no CLI, no writes
 of its own beyond the ``documents``-index upsert callers invoke explicitly.
 """

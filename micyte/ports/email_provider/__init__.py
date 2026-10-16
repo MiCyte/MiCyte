@@ -17,6 +17,7 @@ from .contracts import (
     EmailProviderPort,
     EmailProviderUnavailable,
     InboundMessage,
+    InboundPart,
     MailboxEntry,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "EmailProviderPort",
     "EmailProviderUnavailable",
     "InboundMessage",
+    "InboundPart",
     "MailboxEntry",
 ]

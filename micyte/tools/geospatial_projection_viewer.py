@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from micyte.core.datum_ops import field_registry as _fr
 from micyte.core.datum_ops.datum_resolve import decode_label, resolve_coordinate
 from micyte.state_machine.portal_shell.shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
@@ -33,11 +34,14 @@ from ._shared.utilities import row_tail_label as _row_tail_label
 
 _TENANT_DEFAULT = "fnd"
 _SCHEMA = "mycite.v2.portal.workbench.tool.geospatial_projection.v1"
-_LCL_MARKER = "rf.3-1-5"
-_TITLE_MARKER = "rf.3-1-2"
-_NOMINAL_MARKER = "rf.3-1-7"
-_UTC_MARKER = "rf.3-1-6"      # the feature's born-on day (written since save_field/save_cluster)
-_RETIRE_MARKER = "rf.3-1-10"  # the day it stops being in force; absent = still effective
+# `farm_profile` is a farm document, so its cells resolve in the FARM numbering.
+_LCL_MARKER = _fr.marker(_fr.FARM, "lcl_id")
+_TITLE_MARKER = _fr.marker(_fr.FARM, "title")
+_NOMINAL_MARKER = _fr.marker(_fr.FARM, "nominal")
+# the feature's born-on day (written since save_field/save_cluster)
+_UTC_MARKER = _fr.marker(_fr.FARM, "utc")
+# the day it stops being in force; absent = still effective
+_RETIRE_MARKER = _fr.marker(_fr.FARM, "retire")
 _STRUCTURE_KINDS = ("barn", "greenhouse", "tunnel", "custom_area")
 PREVIEW_PLOT_EDGE_M = 60.0
 

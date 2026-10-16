@@ -358,7 +358,8 @@ class CanvassManager:
             chosen_street = ""
 
         outcomes = {o["value"]: o["label"]
-                    for o in _lcl_options(store, tenant_id=self.tenant_id, sandbox=sandbox)}
+                    for o in _lcl_options(store, tenant_id=self.tenant_id, sandbox=sandbox,
+                                         services_first=False)}
 
         log_id = _document_named(
             store, tenant_id=self.tenant_id, sandbox=sandbox, name=CANVASS_LOG)

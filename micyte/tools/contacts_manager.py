@@ -150,7 +150,7 @@ def client_form(
         {"key": "name", "type": "text", "value": "", "label": "Name — first middle last",
          "placeholder": "Jane Doe"},
         {"key": "email", "type": "text", "value": "", "label": "Email", "placeholder": "name@example.com"},
-        {"key": "phone", "type": "text", "value": "", "label": "Phone", "placeholder": "330 555 0940"},
+        {"key": "phone", "type": "text", "value": "", "label": "Phone", "placeholder": "330 555 0140"},
         {"key": "node_state", "type": "select", "value": "", "label": "State", "options": states},
         {"key": "node_city", "type": "select", "value": "",
          "label": "City — not narrowed by the state above; a mismatched pair is refused",
@@ -159,7 +159,8 @@ def client_form(
          "placeholder": "120 Maple Street"},
     ]
     if pick:
-        fields.append(pick_field(pick, key="services", label="Jobs needed — tick what they asked for"))
+        fields.append(pick_field(pick, key="services", label="Jobs needed — tick what they asked for",
+                                 quantity=True))
         fields.append({"key": "when", "type": "text", "value": "",
                        "label": "Date for the work — YYYY-MM-DD, blank for today",
                        "placeholder": "2026-09-17"})
@@ -615,7 +616,7 @@ class ContactsManager:
                       edit_hint="the street address as you would write it; the registrar "
                                 "learns it if it does not hold it yet"),
                 field("email", placeholder="name@example.com"),
-                field("phone", placeholder="330 555 0940"),
+                field("phone", placeholder="330 555 0140"),
                 field("birthday", kind="date", label="birthday"),
                 field("website", placeholder="example.com"),
             ],

@@ -24,6 +24,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
+from micyte.core.datum_ops import field_registry as _fr
 from micyte.core.document_naming import (
     ANCHOR_DOCUMENT_NAMES,
     CanonicalNameError,
@@ -74,9 +75,14 @@ SYSTEM_SANDBOX = "system"
 # the DNS of the network — and the only correct way to attach meaning to an msn.
 REGISTRAR_SANDBOX = "registrar"
 LEGAL_ENTITY_DOCUMENT = "legal_entity"
-# legal_entity rows serialize as flat (value, "rf.x-y-z") pairs, value first.
-MSN_FIELD = "rf.3-1-3"
-SLUG_FIELD = "rf.3-1-13"
+# legal_entity rows serialize as `[address, marker, value, marker, value, ...]`, and
+# `_row_fields` pairs each cell with the marker AFTER it. The leading address shifts
+# everything by one, so these keys are POSITIONS, not the fields the values really are:
+# the msn (registrar `msn_id`, 3-1-2) is keyed under the marker that follows it — the
+# registrar's `title` — and the slug under the registrar's `lcl_id`. Resolved in the
+# REGISTRAR namespace because `legal_entity` is a registrar document.
+MSN_FIELD = _fr.marker(_fr.REGISTRAR, "title")
+SLUG_FIELD = _fr.marker(_fr.REGISTRAR, "lcl_id")
 
 # Words that read wrong under a plain title-case: legal suffixes ("Llc") and
 # acronyms ("Fnd Ebi"). A rule about how WORDS render — deliberately not a

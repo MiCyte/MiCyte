@@ -61,12 +61,27 @@ class EventVocabulary:
     def from_log(cls, log: Any) -> EventVocabulary:
         """The roots by label from a :class:`LocalDomainLog` (or anything with ``entries``
         of ``label``-bearing nodes); a root the tree lacks keeps its legacy address."""
-        by_label: dict[str, str] = {}
+        # A ROOT HAS CHILDREN (2026-10-11). The registrar's tree names `ag_profile` twice: a
+        # leaf in the list of archetype NAMES (classes / archetypes) and the classification
+        # root whose children are producer, farmers_market_host, csa_operator, ... First
+        # match took the leaf, every category read "organization", and the map lost its
+        # classes. So a label resolves to the first node that heads a subtree, and only a
+        # label no subtree carries falls back to its first leaf.
         entries = getattr(log, "entries", None) or {}
+        nodes = [str(n) for n in entries]
+        heads = {n for n in nodes if any(m.startswith(n + "-") for m in nodes)}
+        by_label: dict[str, str] = {}
+        leaf_only: dict[str, str] = {}
         for node, entry in entries.items():
             label = str(getattr(entry, "label", "") or "")
-            if label and label not in by_label:
-                by_label[label] = str(node)
+            if not label:
+                continue
+            if str(node) in heads:
+                by_label.setdefault(label, str(node))
+            else:
+                leaf_only.setdefault(label, str(node))
+        for label, node in leaf_only.items():
+            by_label.setdefault(label, node)
         return cls(
             class_root=by_label.get(CLASS_LABEL, LEGACY.class_root),
             kind_root=by_label.get(KIND_LABEL, LEGACY.kind_root),

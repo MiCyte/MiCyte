@@ -99,13 +99,18 @@ def service_options(log: Any) -> list[dict[str, Any]]:
 
 
 def services_from_selection(
-    selected: Any, options: list[dict[str, Any]],
+    selected: Any, options: list[dict[str, Any]], quantities: Any = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """``(services, refusal)`` — a posted selection as the ``services`` a job document
     takes, or the sentence saying what was not offered.
 
     Accepts a list or a comma/newline-separated string of node addresses. Order is the
     tree's, not the click order, and a node picked twice is one service.
+
+    ``quantities`` (2026-10-15): ``{node: how many}`` from the box beside each pick. A
+    quantity becomes the service's counter (the `nominal` run `job_service` already
+    carries); a blank one is "not counted", never 1. A quantity for a node that was not
+    picked, or one that is not a positive number, is refused rather than dropped.
     """
     if isinstance(selected, str):
         tokens = [t.strip() for t in selected.replace("\n", ",").split(",")]
@@ -121,8 +126,30 @@ def services_from_selection(
     if unknown:
         return [], (f"not among the services this instance offers: {', '.join(unknown)} — "
                     "the list is the tree's own `services` branch")
-    return [{"lcl_id": as_text(o["value"])} for o in options
-            if as_text(o.get("value")) in wanted], ""
+    counts: dict[str, str] = {}
+    for node, raw in (quantities.items() if isinstance(quantities, dict) else ()):
+        text = as_text(raw).strip()
+        if not text:
+            continue
+        node = as_text(node).strip()
+        if node not in wanted:
+            return [], f"a quantity was given for {node!r}, which was not picked"
+        try:
+            ok = float(text) > 0
+        except ValueError:
+            ok = False
+        if not ok:
+            return [], f"the quantity for {offered[node].get('label') or node} must be a number above 0, not {text!r}"
+        counts[node] = text
+    picked = []
+    for o in options:
+        node = as_text(o.get("value"))
+        if node in wanted:
+            service: dict[str, Any] = {"lcl_id": node}
+            if node in counts:
+                service["quantities"] = [counts[node]]
+            picked.append(service)
+    return picked, ""
 
 
 def no_services_branch(sandbox: str) -> str:
@@ -154,7 +181,7 @@ def offered_services(
 
 def pick_field(
     options: list[dict[str, Any]], *, key: str = "services", label: str = "Jobs needed",
-    value: list[str] | None = None,
+    value: list[str] | None = None, quantity: bool = False,
 ) -> dict[str, Any]:
     """The `record_form` field both surfaces draw the selection with — ONE shape.
 
@@ -163,11 +190,15 @@ def pick_field(
     here rather than in each surface so the contact form and the job form cannot offer
     the same tree two different ways.
     """
-    return {
+    field = {
         "key": key, "type": "checkboxes", "label": label, "value": list(value or []),
         "options": [{"value": o["value"], "label": o["label"], "group": o["group"],
                      "depth": o["depth"]} for o in options],
     }
+    if quantity:
+        # A "how many" box beside each pick, posted as ``<key>_quantities``.
+        field["quantity"] = True
+    return field
 
 
 def labels_for(services: list[dict[str, Any]], options: list[dict[str, Any]]) -> list[str]:

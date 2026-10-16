@@ -60,7 +60,7 @@ from micyte.core.structures.hops import (
 )
 from micyte.state_machine.portal_shell.shell_schemas import WORKBENCH_UI_TOOL_ROUTE
 
-from ._archetype import read_sandbox_catalog
+from ._archetype import read_sandboxes_catalog
 from ._registry import register
 from ._requirements import REGISTRAR
 from ._shared.utilities import as_text as _as_text
@@ -69,6 +69,8 @@ from ._shared.utilities import row_head as _row_head
 _TENANT_DEFAULT = "fnd"
 _SCHEMA = "mycite.v2.portal.workbench.tool.network_map.v1"
 SOURCE_SANDBOX = "registrar"
+#: What the map reads: the registrar, and the channel its ag profiles moved to (2026-08-05).
+MAP_SANDBOXES = (SOURCE_SANDBOX, "agnet")
 MANIFEST_NAME = "network_sources"
 _COORD = _fr.marker(_fr.REGISTRAR, "coordinate")       # rf.3-1-1
 _NODE = _fr.marker(_fr.REGISTRAR, "msn_id")            # rf.3-1-2
@@ -81,6 +83,7 @@ _JURISDICTION = _fr.marker(_fr.REGISTRAR, "jurisdiction_type")   # rf.3-1-10
 _REGION_REF = _fr.marker(_fr.REGISTRAR, "region_polygon_ref")    # rf.3-1-11
 _STAMP = _fr.marker(_fr.REGISTRAR, "ic_stamp")         # rf.3-1-15 (ic-hops cyclical stamp)
 _SPAN = _fr.marker(_fr.REGISTRAR, "tiu_magnitude")     # rf.3-1-16 (tiu span magnitude)
+_DNS = _fr.marker(_fr.REGISTRAR, "dns")                # rf.3-1-9
 # Event kinds, structures, units, classes and ag categories are named by LEAF ORDINAL —
 # the local domain's 2026-09-09 re-rooting kept the numbering and changed every prefix.
 # See micyte/core/datum_ops/event_vocabulary.py.
@@ -158,7 +161,7 @@ _KIND_TO_CLASS = {"farm": "farm", "legal": "legal", "hub": "legal",
                   "administrative": "administrative", "community": "informal",
                   "cooperative": "cooperative"}
 
-# Operator-curated host-class overrides (same pattern as rectify_fnd_profile_coordinates):
+# Operator-curated host-class overrides (same pattern as the FND profile-coordinates rectifier):
 # a farmers market is coloured by WHO drives it, which is not always the market's own
 # standalone entity class. Keyed by the owner slug (label prefix). Extend as hosts are
 # confirmed; the default falls through to the entity's own class.
@@ -545,6 +548,9 @@ def build_network_map_base(docs: list[Any], *, sandbox_id: str,
     for r in (getattr(profiles_doc, "rows", ()) or ()) if profiles_doc is not None else ():
         pairs = _pairs(_row_head(r))
         node, lcl_node = pairs.get(_NODE, [""])[0], pairs.get(_LCL, [""])[0]
+        # The rows still carry the pre-2026-09-09 numbering (1-2-K); translated into
+        # THIS tree's, or nothing classifies and every host reads "organization".
+        lcl_node = vocabulary.translate(lcl_node)
         if node and lcl_node:
             host_profile_cats.setdefault(node, []).append(_category_for(lcl_node, vocabulary))
 
@@ -624,7 +630,8 @@ def build_network_map_base(docs: list[Any], *, sandbox_id: str,
             for r in getattr(doc, "rows", ()) or ():
                 pairs = _pairs(_row_head(r))
                 node = pairs.get(_NODE, [""])[0]
-                lcl_node = pairs.get(_LCL, [""])[0]
+                written = pairs.get(_LCL, [""])[0]
+                lcl_node = vocabulary.translate(written)
                 lonlat = _lonlat(pairs.get(_COORD, [""])[0])
                 if not node or not lcl_node or lonlat is None:
                     continue
@@ -648,7 +655,7 @@ def build_network_map_base(docs: list[Any], *, sandbox_id: str,
                     # unique row address within fnd_ag_profiles — lets the registrar
                     # tool address this exact profile for detail + edit (msn is NOT unique).
                     "datum_address": _as_text(getattr(r, "datum_address", "")),
-                    "lcl_node": lcl_node,
+                    "lcl_node": written,
                     "category": category,
                     "category_label": _CATEGORY_LABEL.get(category, category),
                     "color_class": cls,
@@ -662,7 +669,7 @@ def build_network_map_base(docs: list[Any], *, sandbox_id: str,
                     "lon": lonlat[0], "lat": lonlat[1],
                     "color": cls_style["color"],      # brand class colour
                     "icon": icon,
-                    "dns": pairs.get("rf.3-1-9", [""])[0],
+                    "dns": pairs.get(_DNS, [""])[0],
                 })
         elif res["kind"] == "events":
             rendered += 1
@@ -940,8 +947,11 @@ def remembered_network_map_base(
             _BASE.move_to_end(key)
     if hit is not None:
         return hit
-    docs, err = read_sandbox_catalog(
-        authority_db_file, tenant_id=_TENANT_DEFAULT, sandbox=SOURCE_SANDBOX)
+    # The registrar AND the channel the ag profiles moved to (2026-08-05). Read from the
+    # registrar alone, the profiles resource resolved to nothing and the live map drew no
+    # profile at all (measured 2026-10-11).
+    docs, err = read_sandboxes_catalog(
+        authority_db_file, tenant_id=_TENANT_DEFAULT, sandboxes=MAP_SANDBOXES)
     if err:
         return _error(err)
     base = build_network_map_base(docs, sandbox_id=sandbox_id, now=now)

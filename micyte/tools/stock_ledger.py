@@ -120,6 +120,17 @@ class StockLedger:
             read_document(store, tenant_id=self.tenant_id, document_id=doc_id),
             registry=registry, namespace=namespace, labels=labels)
         balances = movements.balances()
+        # The day is stored as a HOPS token on the sandbox's own clock; read it back through
+        # that clock, as the supply and sales tables beside this one do. Until 2026-10-11
+        # this column showed the token itself (`0-0-0-507-979-0-0-0`) on every row — found
+        # by the micyte.com demo, the first payload anybody read with a movement in it.
+        from ._hops_dates import chrono_authority
+        from .job_manager import _document_named, _readable
+
+        anchor_id = _document_named(
+            store, tenant_id=self.tenant_id, sandbox=sandbox, name="anchor")
+        authority = (chrono_authority(read_document(
+            store, tenant_id=self.tenant_id, document_id=anchor_id)) if anchor_id else None)
 
         rows: list[dict[str, Any]] = []
         # Newest first: a log IS an event series, so the last thing that happened is the
@@ -135,7 +146,7 @@ class StockLedger:
                 "count": str(event.count),
                 "way": "in" if (event.signed or 0) > 0 else ("out" if event.signed else "?"),
                 "party": names.label(event.party, key_field="msn_id") or event.party,
-                "day": event.day,
+                "day": _readable(authority, event.day) if event.day else "",
                 "note": event.note,
                 "on_hand": "unknown" if on_hand is None else str(on_hand),
             })

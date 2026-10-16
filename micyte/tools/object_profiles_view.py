@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from micyte.core.datum_ops import field_registry as _fr
 from micyte.core.datum_ops.datum_resolve import decode_label
 
-_LCL_MARKER = "rf.3-1-5"
-_TITLE_MARKER = "rf.3-1-2"
-_NOMINAL_MARKER = "rf.3-1-7"
+# `object_profiles` is a farm document, so its cells resolve in the FARM numbering.
+_LCL_MARKER = _fr.marker(_fr.FARM, "lcl_id")
+_TITLE_MARKER = _fr.marker(_fr.FARM, "title")
+_NOMINAL_MARKER = _fr.marker(_fr.FARM, "nominal")
 
 # Structure kinds carry drawn geometry (in farm_profile); the rest are store-only.
 STRUCTURE_KINDS = ("barn", "greenhouse", "tunnel", "custom_area")

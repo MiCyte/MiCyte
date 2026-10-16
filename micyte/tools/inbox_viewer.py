@@ -38,6 +38,16 @@ MESSAGE_ROUTE = "/portal/api/v2/fnd_service/message"
 TRIAGE_ROUTE = "/portal/api/v2/fnd_service/triage"
 SEND_ROUTE = "/portal/api/v2/fnd_service/send"
 FORWARD_ROUTE = "/portal/api/v2/fnd_service/forward"
+#: A GET: one part of one message, so an attachment link is a plain ``<a href>``.
+ATTACHMENT_ROUTE = "/portal/api/v2/fnd_service/attachment"
+
+#: The surface-query parameter the list's position travels in, so a reload or a shared
+#: link reopens the same page of mail — the way the Domain tab carries its node.
+CURSOR_QUERY = "inbox_cursor"
+
+#: Rows per page. The list is a column of buttons beside a reader; fifty is more than a
+#: screen and far less than a mailbox.
+PAGE_SIZE = 50
 
 #: Why a pane with no connection says so rather than showing an empty list.
 UNCONNECTED_TEXT = (
@@ -47,13 +57,20 @@ UNCONNECTED_TEXT = (
 )
 
 
-def inbox_payload(*, sandbox: str, providers: tuple[str, ...] = ()) -> dict[str, Any]:
+def inbox_payload(
+    *, sandbox: str, providers: tuple[str, ...] = (), query: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """The pane. Holds no message and no binding — both are the host's to answer.
 
     Deliberately stateless: which bindings exist and which functions are permitted change
     when an operator edits config, and a payload that had baked them in would go stale
     between a render and a click. The client asks, every time, and is told.
+
+    The one thing it does carry from the request is WHERE in the list the operator was:
+    ``inbox_cursor`` from the surface query, an offset the list route understands. Not
+    validated beyond "digits" here — the route owns the meaning; this only hands it back.
     """
+    cursor = as_text((query or {}).get(CURSOR_QUERY))
     return {
         "schema": _SCHEMA,
         "container": "inbox",
@@ -65,7 +82,11 @@ def inbox_payload(*, sandbox: str, providers: tuple[str, ...] = ()) -> dict[str,
             "triage": TRIAGE_ROUTE,
             "send": SEND_ROUTE,
             "forward": FORWARD_ROUTE,
+            "attachment": ATTACHMENT_ROUTE,
         },
+        "page_size": PAGE_SIZE,
+        "cursor": cursor if cursor.isdigit() else "",
+        "cursor_param": CURSOR_QUERY,
         "providers": list(providers),
         "unconnected_text": UNCONNECTED_TEXT,
         "empty_text": "Nothing has arrived for this mailbox.",
@@ -79,9 +100,12 @@ def inbox_payload(*, sandbox: str, providers: tuple[str, ...] = ()) -> dict[str,
 
 
 __all__ = [
+    "ATTACHMENT_ROUTE",
+    "CURSOR_QUERY",
     "FORWARD_ROUTE",
     "LIST_ROUTE",
     "MESSAGE_ROUTE",
+    "PAGE_SIZE",
     "SEND_ROUTE",
     "TRIAGE_ROUTE",
     "UNCONNECTED_TEXT",

@@ -173,7 +173,7 @@ def rewrite_title(raw: Any, label: str) -> list[Any]:
 
     Single sources the retitle discipline previously copy-pasted in
     ``portal_datum_workbench_mutation_runtime._update_primary_value`` and
-    ``scripts/edit_agro_erp_farm_profile.build``.
+    the agro-ERP farm-profile editor's ``build``.
 
     Raises ``ValueError`` when ``raw`` is not a canonical binary-title row — a list
     head with a TITLE marker and a *list* tail (``primary_value_unsupported_shape``

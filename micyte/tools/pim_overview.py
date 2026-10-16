@@ -49,6 +49,10 @@ TAB_QUERY = "pim_tab"
 #: codebase gets one; sharing the parent's moves the parent when a sub-tab
 #: is picked.
 ANALYTICS_QUERY = "analytics_section"
+#: Resources' subtab, and the act chosen inside its arrangement pane. Each nesting level
+#: owns its own parameter, so a refetch re-opens both where the reader left them.
+RESOURCE_TAB_QUERY = "resource_tab"
+RESOURCE_ACT_QUERY = "resource_act"
 
 #: WHICH MONTH the strip has selected. Its own key for the same reason the sub-tab has
 #: one: a period is picked from inside a sub-tab, and spending `ANALYTICS_QUERY` on it
@@ -1464,7 +1468,8 @@ class PimOverview:
             "empty_text": "",
         }
 
-    def _resources_pane(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _resources_pane(self, context: dict[str, Any] | None = None, *,
+                        query: dict[str, Any] | None = None) -> dict[str, Any]:
         """This instance's resources, in SUBTABS its own local domain names.
 
         The operator's instruction: "use subtabs that are derived from artifact typing
@@ -1524,20 +1529,25 @@ class PimOverview:
         # instance HOLDS; this one says how it is ARRANGED, and it is the half a client can
         # change. Placed first because a client opening Resources to file something looks
         # for the shape before the contents.
-        panes.insert(0, self._resource_graph_pane(facts))
+        panes.insert(0, self._resource_graph_pane(facts, query=query))
+        # The tab the reader was on, when the refetch says so (2026-10-11). The pane
+        # declared `resource_tab` and answered with its first tab whatever was asked, so
+        # every form that posted and refreshed dropped the reader back on the first tab.
+        asked = _as_text((query or {}).get(RESOURCE_TAB_QUERY))
         return {
             "schema": _SCHEMA,
             "container": "tabbed",
             "title": "Resources",
-            "active_tab": panes[0]["id"],
-            "tab_query_param": "resource_tab",
+            "active_tab": asked if any(p.get("id") == asked for p in panes) else panes[0]["id"],
+            "tab_query_param": RESOURCE_TAB_QUERY,
             # `tabs`, which is what `renderTabbed` reads. Named `panes` first, and the
             # container drew "No tabs to display" over five real subtabs — a payload that
             # is correct in every value and wrong in one key.
             "tabs": panes,
         }
 
-    def _resource_graph_pane(self, facts: dict[str, Any]) -> dict[str, Any]:
+    def _resource_graph_pane(self, facts: dict[str, Any], *,
+                             query: dict[str, Any] | None = None) -> dict[str, Any]:
         """The instance's resource branch as a tree it can rearrange — and the forms that do it.
 
         WHAT A ROW IS. A resource entry reads as three lcl ids — its own node address, the
@@ -1641,12 +1651,14 @@ class PimOverview:
                 "container": "composite",
                 "direction": "column",
                 "panes": [{"panel_payload": table},
-                          *self._one_act_at_a_time(self._arrangement_forms(root, parents, subjects))],
+                          *self._one_act_at_a_time(self._arrangement_forms(root, parents, subjects),
+                                                   query=query)],
             },
         }
 
     @staticmethod
-    def _one_act_at_a_time(forms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _one_act_at_a_time(forms: list[dict[str, Any]], *,
+                           query: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Three forms side by side are seven fields to read before doing one thing
         (2026-10-07). One act at a time: the forms become tabs of one pane — Add a grouping ·
         Rename · Move — and a person reads the two or three fields of the act they chose.
@@ -1658,8 +1670,11 @@ class PimOverview:
             form = entry.get("panel_payload") or {}
             title = _as_text(form.get("title")) or "Act"
             tabs.append({"id": title.lower().replace(" ", "_"), "label": title, "panel_payload": form})
+        asked = _as_text((query or {}).get(RESOURCE_ACT_QUERY))
+        active = asked if any(t["id"] == asked for t in tabs) else tabs[0]["id"]
         return [{"panel_payload": {"schema": _SCHEMA, "container": "tabbed", "title": "",
-                                   "tabs": tabs, "active_tab": tabs[0]["id"]}}]
+                                   "tabs": tabs, "active_tab": active,
+                                   "tab_query_param": RESOURCE_ACT_QUERY}}]
 
     def _arrangement_forms(self, root: str, parents: list[dict[str, str]],
                            subjects: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -2016,7 +2031,7 @@ class PimOverview:
             "design": lambda: design.build_panel_payload(
                 sandbox_id=sandbox, extra_query=query, host_context=context),
             "site": lambda: build_site_payload(context, sandbox=sandbox),
-            "resources": lambda: self._resources_pane(context),
+            "resources": lambda: self._resources_pane(context, query=query),
             "domain": lambda: self._domain_pane(context),
             "storage": lambda: self._storage_pane(context),
             "payment": lambda: self._payment_pane(context),

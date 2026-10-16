@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from micyte.core.datum_ops import field_registry as _fr
 from micyte.core.datum_ops.datum_resolve import cached_index, decode_label, marker_buckets
 from micyte.core.datum_ops.fiat_datum import FiatChainError, find_fiat_chain, format_cents
 from micyte.ports.commerce_offering import (
@@ -40,9 +41,10 @@ from ._shared.utilities import row_head as _row_head
 from ._shared.utilities import row_tail_label as _row_tail_label
 
 OFFERING_PREFIX = "4-9-"
-_RF_LCL = "rf.3-1-5"
-_RF_NOMINAL = "rf.3-1-7"
-_RF_TITLE = "rf.3-1-2"
+# A farm's own offering rows, so its cells resolve in the FARM numbering.
+_RF_LCL = _fr.marker(_fr.FARM, "lcl_id")
+_RF_NOMINAL = _fr.marker(_fr.FARM, "nominal")
+_RF_TITLE = _fr.marker(_fr.FARM, "title")
 
 
 def _cents_of(value: Any) -> int | None:
